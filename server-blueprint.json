@@ -1,0 +1,387 @@
+{
+  "enabled": false,
+  "color": 8388640,
+  "brand": "Ripcars Gate",
+  "website": "https://app.ripcars.io",
+  "auto_repair": true,
+  "captcha_length": 6,
+  "captcha_ttl": 300,
+  "max_attempts": 3,
+  "lock_seconds": 600,
+  "answer_ttl": 1800,
+  "ops_channel_id": null,
+  "texts": {
+    "welcome_title": "Welcome to Rip Cars",
+    "welcome": "Complete the CAPTCHA and answer at least one question to join the garage. The other questions are optional.",
+    "success": "You're in. Your Rippers role is ready. See you in General!",
+    "questions_intro": "Tell us a little about yourself. Answer at least one question, then finish. Skip the others if you want.",
+    "rules": "Keep it friendly. No harassment, scams, spam, or impersonation. Use the right channel. Never share wallet recovery phrases. Staff will never ask for them. Follow Discord's rules. Trades are arranged between members; ask questions before making a deal.",
+    "faq": "Rip Cars is an onchain gacha for die-cast cars, including Hot Wheels. Start at https://app.ripcars.io. For an account, pack, or delivery issue, use Ticket when support opens. Check the app for current stock, pack details, and shipping terms.",
+    "official_links": "Rip Cars app: https://app.ripcars.io\nUse links posted here by the team. Other official links will be added by an admin.",
+    "announcements": "Project announcements from the Rip Cars team. Read the updates and react below.",
+    "twitter_posts": "Posts from the official Rip Cars account will appear here when the feed is connected.",
+    "community_news": "Community updates, events, and news from the garage.",
+    "proposals": "Read project proposals and react. The team publishes updates here.",
+    "notifications": "Choose what you want to hear about. Click a button to add or remove its role.",
+    "ticket": "Support is being set up. The ticket bot will be connected here when it is ready. This panel does not open tickets yet.",
+    "gcars": "One text post per member every 24 hours. Use Submit text below. No links, images, files, or mentions."
+  },
+  "questions": [
+    {
+      "id": "collector",
+      "label": "Are you a collector?",
+      "prompt": "Do you collect Hot Wheels or other die-cast cars?",
+      "enabled": true
+    },
+    {
+      "id": "packs",
+      "label": "Have you opened a Rip Cars pack?",
+      "prompt": "Have you opened a pack on Rip Cars?",
+      "enabled": true
+    },
+    {
+      "id": "dream",
+      "label": "What's your dream car?",
+      "prompt": "What's your dream car?",
+      "enabled": true
+    }
+  ],
+  "claims": {
+    "collectors": "Collectors",
+    "updates": "Updates and News",
+    "announcements": "Announcements",
+    "game": "Game"
+  },
+  "blueprint": {
+    "start": {
+      "name": "Start Here",
+      "parent": null,
+      "kind": "category",
+      "access": "public",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "official": {
+      "name": "Official",
+      "parent": null,
+      "kind": "category",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "garage": {
+      "name": "Main Garage",
+      "parent": null,
+      "kind": "category",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "repair": {
+      "name": "Repair Services",
+      "parent": null,
+      "kind": "category",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "owners": {
+      "name": "$CARS Owners",
+      "parent": null,
+      "kind": "category",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "open_tickets": {
+      "name": "Open",
+      "parent": null,
+      "kind": "category",
+      "access": "staff",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "closed_tickets": {
+      "name": "Closed",
+      "parent": null,
+      "kind": "category",
+      "access": "staff",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "operations": {
+      "name": "Server Operations",
+      "parent": null,
+      "kind": "category",
+      "access": "staff",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "rules": {
+      "name": "rules",
+      "parent": "start",
+      "kind": "text",
+      "access": "public",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "verification": {
+      "name": "verification",
+      "parent": "start",
+      "kind": "text",
+      "access": "public",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "holder": {
+      "name": "holder-verification",
+      "parent": "start",
+      "kind": "text",
+      "access": "staff",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "notifications": {
+      "name": "notifications",
+      "parent": "start",
+      "kind": "text",
+      "access": "member",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "announcements": {
+      "name": "announcements",
+      "parent": "official",
+      "kind": "text",
+      "access": "member",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "official_links": {
+      "name": "official-links",
+      "parent": "official",
+      "kind": "text",
+      "access": "public",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "twitter_posts": {
+      "name": "twitter-posts",
+      "parent": "official",
+      "kind": "text",
+      "access": "member",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "faq": {
+      "name": "faq",
+      "parent": "official",
+      "kind": "text",
+      "access": "public",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "general": {
+      "name": "general",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "show_off": {
+      "name": "show-off",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": false,
+      "images": true,
+      "topic": ""
+    },
+    "trades": {
+      "name": "trades",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "hot_wheels": {
+      "name": "hot-wheels-irl",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "gcars": {
+      "name": "gcars",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "submit",
+      "slowmode": 86400,
+      "links": false,
+      "images": false,
+      "topic": ""
+    },
+    "community_news": {
+      "name": "community-news",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "content": {
+      "name": "content",
+      "parent": "garage",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 7200,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "ticket": {
+      "name": "ticket",
+      "parent": "repair",
+      "kind": "text",
+      "access": "member",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "need_that": {
+      "name": "need-that",
+      "parent": "repair",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "feedback": {
+      "name": "feedback-or-bugs",
+      "parent": "repair",
+      "kind": "text",
+      "access": "member",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "owners_chat": {
+      "name": "owners-chat",
+      "parent": "owners",
+      "kind": "text",
+      "access": "og",
+      "mode": "chat",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "proposals": {
+      "name": "proposals",
+      "parent": "owners",
+      "kind": "text",
+      "access": "member",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    },
+    "gate_log": {
+      "name": "gate-log",
+      "parent": "operations",
+      "kind": "text",
+      "access": "staff",
+      "mode": "read",
+      "slowmode": 0,
+      "links": true,
+      "images": true,
+      "topic": ""
+    }
+  },
+  "role_names": {
+    "rippers": "Rippers",
+    "og": "OG",
+    "moderator": "Moderator",
+    "admin": "Admin",
+    "team": "Team",
+    "claim_collectors": "Collectors",
+    "claim_updates": "Updates and News",
+    "claim_announcements": "Announcements",
+    "claim_game": "Game"
+  }
+}

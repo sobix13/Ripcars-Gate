@@ -1,0 +1,32 @@
+[Unit]
+Description=Ripcars Gate
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=notify
+User=ripcarsgate
+Group=ripcarsgate
+SupplementaryGroups=ripcars-bots
+WorkingDirectory=/opt/ripcars-gate/current
+EnvironmentFile=/etc/ripcars-gate.env
+Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/opt/ripcars-gate/current/.venv/bin/python scripts/preflight.py
+ExecStart=/opt/ripcars-gate/current/.venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=180
+TimeoutStopSec=30
+WatchdogSec=90
+NotifyAccess=main
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/ripcars-gate /var/lib/ripcars-bots
+UMask=0007
+
+[Install]
+WantedBy=multi-user.target

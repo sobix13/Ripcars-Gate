@@ -1,0 +1,30 @@
+resource_key,name,kind,access,posting_mode,member_view,history_if_visible,reactions_if_visible,images,link_previews,cooldown_seconds,member_management,before_entry_view
+start,Start Here,category,public,chat,True,True,True,True,True,0,False,True
+official,Official,category,member,chat,True,True,True,True,True,0,False,False
+garage,Main Garage,category,member,chat,True,True,True,True,True,0,False,False
+repair,Repair Services,category,member,chat,True,True,True,True,True,0,False,False
+owners,$CARS Owners,category,member,chat,True,True,True,True,True,0,False,False
+open_tickets,Open,category,staff,chat,False,True,True,True,True,0,False,False
+closed_tickets,Closed,category,staff,chat,False,True,True,True,True,0,False,False
+operations,Server Operations,category,staff,chat,False,True,True,True,True,0,False,False
+rules,rules,text,public,read,True,True,True,False,False,0,False,True
+verification,verification,text,public,read,True,True,True,False,False,0,False,True
+holder,holder-verification,text,staff,read,False,True,True,False,False,0,False,False
+notifications,notifications,text,member,read,True,True,True,False,False,0,False,False
+announcements,announcements,text,member,read,True,True,True,False,False,0,False,False
+official_links,official-links,text,public,read,True,True,True,False,False,0,False,True
+twitter_posts,twitter-posts,text,member,read,True,True,True,False,False,0,False,False
+faq,faq,text,public,read,True,True,True,False,False,0,False,True
+general,general,text,member,chat,True,True,True,True,True,0,False,False
+show_off,show-off,text,member,chat,True,True,True,True,False,0,False,False
+trades,trades,text,member,chat,True,True,True,True,True,0,False,False
+hot_wheels,hot-wheels-irl,text,member,chat,True,True,True,True,True,0,False,False
+gcars,gcars,text,member,submit,True,True,True,False,False,86400,False,False
+community_news,community-news,text,member,read,True,True,True,False,False,0,False,False
+content,content,text,member,chat,True,True,True,True,True,7200,False,False
+ticket,ticket,text,member,read,True,True,True,False,False,0,False,False
+need_that,need-that,text,member,chat,True,True,True,True,True,0,False,False
+feedback,feedback-or-bugs,text,member,chat,True,True,True,True,True,0,False,False
+owners_chat,owners-chat,text,og,chat,False,True,True,True,True,0,False,False
+proposals,proposals,text,member,read,True,True,True,False,False,0,False,False
+gate_log,gate-log,text,staff,read,False,True,True,False,False,0,False,False

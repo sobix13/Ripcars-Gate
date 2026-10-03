@@ -1,0 +1,35 @@
+{
+  "version": "1.0.1",
+  "status": "local simulated checks passed; live acceptance pending",
+  "tests_discovered": 52,
+  "passed": 52,
+  "skipped": 0,
+  "failures": 0,
+  "errors": 0,
+  "runtime_tests": "passed with real discord.py and mocked API boundaries",
+  "dependencies": {
+    "discord.py": "2.6.4",
+    "aiohttp": "3.13.5",
+    "Pillow": "12.3.0"
+  },
+  "environment": "isolated Python venv with installed discord.py and inherited runtime packages",
+  "discord_api": "simulated; not connected to a live guild",
+  "live_discord": "not run",
+  "vps_deployment": "not run",
+  "python_compilation": "passed",
+  "shell_syntax": "passed",
+  "systemd_unit_syntax": "passed with local interpreter substituted",
+  "english_distribution": {
+    "tests_discovered": 52,
+    "passed": 52,
+    "skipped": 0,
+    "failures": 0,
+    "errors": 0,
+    "dependency_check": "passed",
+    "shell_syntax": "passed",
+    "systemd_unit_syntax": "passed with local paths substituted",
+    "live_discord": "not run",
+    "production_vps_installation": "not run",
+    "documentation_language": "English"
+  }
+}

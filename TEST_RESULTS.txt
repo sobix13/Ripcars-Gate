@@ -1,0 +1,78 @@
+Rip Cars Gate English GitHub distribution verification
+
+Version: 1.0.1
+Tests: 52 passed; zero failures, errors or skips.
+Discord API: mocked boundaries; real SDK and SQLite.
+Dependency check: passed.
+Installer, rollback and runner shell syntax: passed.
+systemd unit syntax: passed with local interpreter and working-directory paths substituted.
+Live Discord gateway, guild permissions and production VPS deployment: not run.
+
+Actual test runner output follows:
+
+Preflight passed: configuration, runtime imports, and permission flags.
+test_real_startup_registers_only_gate_modules_and_persistent_views (test_boot.Boot.test_real_startup_registers_only_gate_modules_and_persistent_views) ... 2026-10-03 13:57:56,319 WARNING discord.client PyNaCl is not installed, voice will NOT be supported
+2026-10-03 13:57:56,324 INFO    ripcarsgate loaded onboarding
+2026-10-03 13:57:56,324 INFO    ripcarsgate loaded community
+2026-10-03 13:57:56,325 INFO    ripcarsgate loaded admin
+2026-10-03 13:57:56,327 INFO    ripcarsgate.health watchdog disabled, NOTIFY_SOCKET is not set
+ok
+test_cannot_disable_every_question (test_core.Policies.test_cannot_disable_every_question) ... ok
+test_daily_post_cannot_be_sent_directly (test_core.Policies.test_daily_post_cannot_be_sent_directly) ... ok
+test_defaults_do_not_share_mutable_state (test_core.Policies.test_defaults_do_not_share_mutable_state) ... ok
+test_fresh_configuration_is_paused_and_has_no_external_dependency (test_core.Policies.test_fresh_configuration_is_paused_and_has_no_external_dependency) ... ok
+test_general_and_show_off_media_rules (test_core.Policies.test_general_and_show_off_media_rules) ... ok
+test_native_and_custom_cooldown_validation (test_core.Policies.test_native_and_custom_cooldown_validation) ... ok
+test_og_does_not_open_holder_or_tickets (test_core.Policies.test_og_does_not_open_holder_or_tickets) ... ok
+test_ordinary_member_never_gets_management_or_privileged_hidden_channels (test_core.Policies.test_ordinary_member_never_gets_management_or_privileged_hidden_channels) ... ok
+test_pre_entry_visibility_is_exact (test_core.Policies.test_pre_entry_visibility_is_exact) ... ok
+test_read_only_channels_have_no_thread_bypass (test_core.Policies.test_read_only_channels_have_no_thread_bypass) ... ok
+test_staff_can_see_history_and_moderate_every_channel (test_core.Policies.test_staff_can_see_history_and_moderate_every_channel) ... ok
+test_all_claim_buttons_add_then_remove_and_reject_unverified_user (test_discord.Discord.test_all_claim_buttons_add_then_remove_and_reject_unverified_user) ... ok
+test_companion_already_deleted_message_is_not_an_error (test_discord.Discord.test_companion_already_deleted_message_is_not_an_error) ... ok
+test_companion_patch_does_not_hide_missing_permission_errors (test_discord.Discord.test_companion_patch_does_not_hide_missing_permission_errors) ... ok
+test_deleting_a_managed_channel_does_not_recreate_it_automatically (test_discord.Discord.test_deleting_a_managed_channel_does_not_recreate_it_automatically) ... ok
+test_every_panel_serializes_within_discord_limits (test_discord.Discord.test_every_panel_serializes_within_discord_limits) ... ok
+test_external_bot_overwrite_survives_a_template_update (test_discord.Discord.test_external_bot_overwrite_survives_a_template_update) ... ok
+test_failed_gcars_publish_does_not_consume_the_day (test_discord.Discord.test_failed_gcars_publish_does_not_consume_the_day) ... ok
+test_full_admin_and_member_onboarding_session (test_discord.Discord.test_full_admin_and_member_onboarding_session) ... ok
+test_gcars_modal_enforces_daily_limit_and_rejects_link (test_discord.Discord.test_gcars_modal_enforces_daily_limit_and_rejects_link) ... ok
+test_manual_permission_change_is_not_reverted (test_discord.Discord.test_manual_permission_change_is_not_reverted) ... ok
+test_public_panel_republish_edits_recorded_messages (test_discord.Discord.test_public_panel_republish_edits_recorded_messages) ... ok
+test_regular_member_cannot_activate_entry (test_discord.Discord.test_regular_member_cannot_activate_entry) ... ok
+test_role_is_granted_only_after_captcha_and_answer (test_discord.Discord.test_role_is_granted_only_after_captcha_and_answer) ... ok
+test_same_name_needs_explicit_id_binding (test_discord.Discord.test_same_name_needs_explicit_id_binding) ... ok
+test_setup_is_repeatable_and_preserves_unknown_resources (test_discord.Discord.test_setup_is_repeatable_and_preserves_unknown_resources) ... ok
+test_backup_is_consistent_and_retention_is_bounded (test_health.Health.test_backup_is_consistent_and_retention_is_bounded) ... ok
+test_database_failure_is_detected (test_health.Health.test_database_failure_is_detected) ... ok
+test_errors_have_unique_ids_and_recent_counts (test_health.Health.test_errors_have_unique_ids_and_recent_counts) ... 2026-10-03 13:57:58,166 ERROR   ripcarsgate.health recorded error id=RCG-261003-3B61C6 where=test type=ValueError message=one
+2026-10-03 13:57:58,166 ERROR   ripcarsgate.health recorded error id=RCG-261003-EFC8AA where=test type=ValueError message=two
+2026-10-03 13:57:58,166 ERROR   ripcarsgate.health recorded error id=RCG-261003-ACDF53 where=test type=ValueError message=three
+ok
+test_startup_latency_does_not_report_nan_as_healthy (test_health.Health.test_startup_latency_does_not_report_nan_as_healthy) ... ok
+test_bad_configuration_cannot_open_holder_or_duplicate_questions (test_hostile.Hostile.test_bad_configuration_cannot_open_holder_or_duplicate_questions) ... ok
+test_companion_setup_lock_is_shared_but_answers_are_not (test_hostile.Hostile.test_companion_setup_lock_is_shared_but_answers_are_not) ... ok
+test_different_servers_do_not_block_each_other (test_hostile.Hostile.test_different_servers_do_not_block_each_other) ... ok
+test_link_filter_and_normal_text (test_hostile.Hostile.test_link_filter_and_normal_text) ... ok
+test_manual_flag_and_owner_are_visible_to_the_next_bot (test_hostile.Hostile.test_manual_flag_and_owner_are_visible_to_the_next_bot) ... ok
+test_parallel_daily_posts_only_reserve_once (test_hostile.Hostile.test_parallel_daily_posts_only_reserve_once) ... ok
+test_post_failure_rolls_back_only_its_own_reservation (test_hostile.Hostile.test_post_failure_rolls_back_only_its_own_reservation) ... ok
+test_registered_id_cannot_be_silently_claimed_twice (test_hostile.Hostile.test_registered_id_cannot_be_silently_claimed_twice) ... ok
+test_stale_admin_form_does_not_overwrite_a_new_setting (test_hostile.Hostile.test_stale_admin_form_does_not_overwrite_a_new_setting) ... ok
+test_captcha_is_single_use_and_bound_to_user (test_verification.Verification.test_captcha_is_single_use_and_bound_to_user) ... ok
+test_captcha_without_an_answer_never_qualifies (test_verification.Verification.test_captcha_without_an_answer_never_qualifies) ... ok
+test_expiry_blocks_a_valid_code (test_verification.Verification.test_expiry_blocks_a_valid_code) ... ok
+test_failed_attempts_lock_and_survive_restart (test_verification.Verification.test_failed_attempts_lock_and_survive_restart) ... ok
+test_grant_failure_is_not_recorded_as_success (test_verification.Verification.test_grant_failure_is_not_recorded_as_success) ... ok
+test_one_answer_qualifies_and_others_remain_optional (test_verification.Verification.test_one_answer_qualifies_and_others_remain_optional) ... ok
+test_parallel_correct_submits_consume_only_once (test_verification.Verification.test_parallel_correct_submits_consume_only_once) ... ok
+test_png_and_hash (test_verification.Verification.test_png_and_hash) ... ok
+test_question_before_captcha_is_rejected (test_verification.Verification.test_question_before_captcha_is_rejected) ... ok
+test_question_progress_survives_restart (test_verification.Verification.test_question_progress_survives_restart) ... ok
+test_rejoin_requires_fresh_entry_but_preserves_research_data (test_verification.Verification.test_rejoin_requires_fresh_entry_but_preserves_research_data) ... ok
+test_whitespace_or_unknown_question_is_rejected (test_verification.Verification.test_whitespace_or_unknown_question_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 52 tests in 2.775s
+
+OK
