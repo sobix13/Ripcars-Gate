@@ -164,7 +164,7 @@ class Admin(commands.Cog):
             await i.response.send_modal(BindModal(self,i.user.id))
         elif action=="review":
             res=await self.bot.db.resources(i.guild_id)
-            keys=[k for k,r in res.items() if r["state"]!="active"]
+            keys=[k for k,r in res.items() if r['owner']==core.OWNER and r["state"]!="active"]
             if not keys:await gu.reply(i,"No protected or missing resources need review.");return
             await choose([discord.SelectOption(label=k[:100],value=k) for k in keys[:25]],self.review)
         elif action=="integration":await i.response.send_modal(IntegrationModal(self,i.user.id))
@@ -270,16 +270,22 @@ class Admin(commands.Cog):
         await gu.reply(i,embed=gu.embed(cfg,"Health & troubleshooting",details),view=SectionView(self,i.user.id,"health") if await gu.authorized(self.bot,i) else None)
     async def review(self,i,key):
         rows=await self.bot.db.resources(i.guild_id);r=rows[key]
+        if r['owner']!=core.OWNER:raise ValueError('Use the owning bot to review this resource. Gate did not change it.')
         obj=i.guild.get_role(r["object_id"]) if key.startswith("role:") else i.guild.get_channel(r["object_id"])
         if not obj:await gu.reply(i,"This resource was deleted. Use Bind an existing ID to choose a replacement.");return
         current=role_snapshot(obj) if key.startswith("role:") else channel_snapshot(obj,r["baseline"])
         async def keep(j):
-            await self.bot.db.baseline(j.guild_id,key,current)
-            # Current values become the baseline; structural template remains visible for later explicit setup.
-            await self.bot.db.state(j.guild_id,key,"pinned")
+            async with self.bot.db.coordinated(j.guild_id):
+                fresh=(await self.bot.db.resources(j.guild_id)).get(key)
+                if not fresh or fresh['owner']!=core.OWNER or fresh['object_id']!=r['object_id']:raise ValueError('Resource ownership or binding changed. Reopen review.')
+                await self.bot.db.baseline(j.guild_id,key,current)
+                await self.bot.db.state(j.guild_id,key,"pinned")
             await gu.reply(j,"Current settings kept. Automatic changes stay disabled for this resource.")
         async def restore(j):
-            await self.bot.db.baseline(j.guild_id,key,current)
+            async with self.bot.db.coordinated(j.guild_id):
+                fresh=(await self.bot.db.resources(j.guild_id)).get(key)
+                if not fresh or fresh['owner']!=core.OWNER or fresh['object_id']!=r['object_id']:raise ValueError('Resource ownership or binding changed. Reopen review.')
+                await self.bot.db.baseline(j.guild_id,key,current)
             result=await self.bot.provisioner.apply(j.guild,j.user.id)
             await gu.reply(j,"Template application result:",file=discord.File(io.BytesIO("\n".join(result).encode()),filename="repair-result.txt"))
         view=AdminView(self,i.user.id)
@@ -302,13 +308,20 @@ class Admin(commands.Cog):
             member=j.guild.get_member(int(botid))
             if not member or not member.bot:raise ValueError("The registered bot is not in this server.")
             keys=("ticket","open_tickets","closed_tickets","gate_log") if r["scope"]=="support" else ("holder",)
-            for key in keys:
-                ch=await gu.resource(self.bot,j.guild,key)
-                if not ch:raise ValueError(f"Missing channel: {key}")
-                ow=ch.overwrites_for(member)
-                ow.update(view_channel=True,read_message_history=True,send_messages=True,embed_links=True,attach_files=True)
-                await ch.set_permissions(member,overwrite=ow,reason="Ripcars Gate: admin-approved companion access")
-            await self.bot.db.execute("UPDATE integrations SET active=1 WHERE guild=? AND bot=?",(j.guild_id,int(botid)))
+            async with self.bot.db.coordinated(j.guild_id) as token:
+                fresh=await self.bot.db.query('SELECT scope FROM integrations WHERE guild=? AND bot=?',(j.guild_id,int(botid)))
+                if not fresh or fresh[0]['scope']!=r['scope']:raise ValueError('Integration scope changed. Reopen review.')
+                resources=await self.bot.db.resources(j.guild_id)
+                for key in keys:
+                    row=resources.get('channel:'+key)
+                    if not row or row['owner'] not in (core.OWNER,'bot:'+botid) or row['state'] not in ('active','pinned','external'):raise ValueError('Channel ownership needs review: '+key)
+                    ch=await gu.resource(self.bot,j.guild,key)
+                    if not ch:raise ValueError(f"Missing channel: {key}")
+                    ow=ch.overwrites_for(member)
+                    ow.update(view_channel=True,read_message_history=True,send_messages=True,embed_links=True,attach_files=True)
+                    await self.bot.db.renew(j.guild_id,'server-setup',token)
+                    await ch.set_permissions(member,overwrite=ow,reason="Ripcars Gate: admin-approved companion access")
+                await self.bot.db.execute("UPDATE integrations SET active=1 WHERE guild=? AND bot=?",(j.guild_id,int(botid)))
             await self.bot.db.log(j.guild_id,j.user.id,"integration_activated",botid)
             await gu.reply(j,"Companion channel access applied. Its base permissions remain under admin control. Resource ownership has not been transferred.")
         view=AdminView(self,i.user.id)
@@ -321,7 +334,7 @@ class Admin(commands.Cog):
             if not fresh or not fresh[0]["active"]:raise ValueError("Activate channel access before transferring responsibility.")
             keys=("channel:ticket","channel:open_tickets","channel:closed_tickets") if r["scope"]=="support" else ("channel:holder",)
             async def commit(k):
-                for key in keys:await self.bot.db.execute("UPDATE resources SET owner=?,state='external' WHERE guild=? AND key=?",("bot:"+botid,k.guild_id,key))
+                await self.bot.db.handoff(k.guild_id,keys,int(botid))
                 await self.bot.db.log(k.guild_id,k.user.id,"handoff",f"bot={botid}; keys={keys}")
                 await gu.reply(k,"Responsibility transferred. Gate no longer updates those resources. Configure the companion bot to use the registered IDs.")
             await gu.reply(j,"Transfer these resources?\n"+"\n".join(keys),view=Confirm(self,j.user.id,commit,"Transfer responsibility"))
@@ -354,7 +367,8 @@ class BindModal(gu.SafeModal):
             snap=channel_snapshot(obj,{"name":"","kind":"","parent":None,"topic":"","slowmode":0,"overwrites":{}}) if kind!="category" else channel_snapshot(obj,{"name":"","kind":"","overwrites":{}})
         else:raise ValueError("Unknown resource key. See the blueprint in the package.")
         async def apply(j):
-            await self.bot.db.register(j.guild_id,key,oid,kind,snap)
+            async with self.bot.db.coordinated(j.guild_id):
+                await self.bot.db.register(j.guild_id,key,oid,kind,snap)
             await self.bot.db.log(j.guild_id,j.user.id,"bind_resource",f"{key}={oid}")
             await gu.reply(j,"ID bound. Preview setup before applying template permissions.")
         await gu.reply(i,f"Bind {key} to {obj.name} ({oid})? A later Apply setup will apply the template's managed permissions.",view=Confirm(self.cog,i.user.id,apply,"Bind ID"))
