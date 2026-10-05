@@ -1,0 +1,31 @@
+Ripcars Gate 1.0.2 - Release validation
+Validated at UTC: 2026-10-04T23:56:50.403604+00:00
+
+79 tests passed. Failures: 0. Errors: 0. Skips: 0.
+Python 3.12.14; discord.py 2.6.4; aiohttp 3.13.5.
+Each project was tested in its separately configured Python environment.
+
+Checks passed:
+- Current project run_tests.sh, actual SDK imports and real SQLite.
+- Protocol 2 mirrored leases, legacy blockers, unique identities and read-only inspection.
+- Project-specific functional, failure, recovery and authorization tests.
+- Python compilation, dependency compatibility and shell syntax.
+
+Four actual implementations were also run as separate processes sharing only
+temporary SQLite. All 21 multi-process tests passed. See SUITE_TEST_RESULTS.txt.
+
+Not run: live Discord gateway/production API, live Rip Cars backend or provider,
+installation on the user VPS, production DNS/TLS and multi-day load testing.
+Complete ACCEPTANCE.md before opening features to members.
+
+TEST_RUN.log contains the current verbose execution output. Tracebacks/log errors
+from intentionally injected failure fixtures are not failing test results.
+
+Final unittest result:
+test_rejoin_requires_fresh_entry_but_preserves_research_data (test_verification.Verification.test_rejoin_requires_fresh_entry_but_preserves_research_data) ... ok
+test_whitespace_or_unknown_question_is_rejected (test_verification.Verification.test_whitespace_or_unknown_question_is_rejected) ... ok
+
+----------------------------------------------------------------------
+Ran 79 tests in 3.236s
+
+OK
