@@ -1,35 +1,38 @@
 {
-  "version": "1.0.1",
-  "status": "local simulated checks passed; live acceptance pending",
-  "tests_discovered": 52,
-  "passed": 52,
-  "skipped": 0,
+  "bot": "Ripcars Gate",
+  "version": "1.0.2",
+  "validated_at_utc": "2026-10-04T23:56:50.403604+00:00",
+  "status": "local checks passed; live acceptance pending",
+  "coordination_protocol": 2,
+  "tests_discovered": 79,
+  "passed": 79,
   "failures": 0,
   "errors": 0,
-  "runtime_tests": "passed with real discord.py and mocked API boundaries",
-  "dependencies": {
+  "skipped": 0,
+  "runtime": {
+    "python": "3.12.14",
     "discord.py": "2.6.4",
-    "aiohttp": "3.13.5",
-    "Pillow": "12.3.0"
+    "aiohttp": "3.13.5"
   },
-  "environment": "isolated Python venv with installed discord.py and inherited runtime packages",
-  "discord_api": "simulated; not connected to a live guild",
-  "live_discord": "not run",
-  "vps_deployment": "not run",
-  "python_compilation": "passed",
-  "shell_syntax": "passed",
-  "systemd_unit_syntax": "passed with local interpreter substituted",
-  "english_distribution": {
-    "tests_discovered": 52,
-    "passed": 52,
-    "skipped": 0,
+  "shared_multi_process_tests": {
+    "passed": 21,
     "failures": 0,
-    "errors": 0,
-    "dependency_check": "passed",
-    "shell_syntax": "passed",
-    "systemd_unit_syntax": "passed with local paths substituted",
-    "live_discord": "not run",
-    "production_vps_installation": "not run",
-    "documentation_language": "English"
+    "processes": 4,
+    "temporary_databases_only": true
+  },
+  "checks": {
+    "python_compilation": true,
+    "dependency_compatibility": true,
+    "shell_syntax": true,
+    "static_analysis": false,
+    "english_text": true,
+    "legacy_brand_matches": 0
+  },
+  "test_boundaries": {
+    "live_discord_gateway": false,
+    "production_discord_api": false,
+    "live_ripcars_backend": false,
+    "live_rpc_provider": false,
+    "user_vps_installation": false
   }
 }

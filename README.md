@@ -1,7 +1,7 @@
-# Ripcars Gate 1.0.1
+# Ripcars Gate 1.0.2
 ## Repository files and installation packages
 
-This repository contains the complete 1.0.1 source, tests, dependency files, installation/rollback scripts, systemd service, settings examples and English operational documentation.
+This repository contains the complete 1.0.2 source, tests, dependency files, installation/rollback scripts, systemd service, settings examples and English operational documentation.
 
 | File or directory | Purpose |
 | --- | --- |
@@ -16,9 +16,11 @@ This repository contains the complete 1.0.1 source, tests, dependency files, ins
 | [scripts/rollback.sh](scripts/rollback.sh) | Code rollback |
 | [ripcars-gate.service](ripcars-gate.service) | Non-root systemd service |
 | [tests](tests) | Complete offline suite |
-| [releases/1.0.1](releases/1.0.1) | English TAR/ZIP packages, checksums and matching guides |
+| [releases/1.0.2](releases/1.0.2) | English TAR/ZIP packages, checksums and matching guides |
 
-The source and archives contain no credentials, member databases or virtual environments. Installation excludes Git metadata, previous packaged releases and runtime state. Discord runtime behavior is unchanged by this documentation publication.
+The source and archives contain no credentials, member databases or virtual environments. Installation excludes Git metadata, previous packaged releases and runtime state. Version 1.0.2 fixes shared coordination and protects foreign resource ownership; member entry requirements are unchanged.
+
+See [SUITE_DEPLOYMENT.md](SUITE_DEPLOYMENT.md) and [SUITE_TEST_RESULTS.txt](SUITE_TEST_RESULTS.txt) for the compatible four-bot versions, rollout and multi-process test evidence. All four ship identical `ripcars_coordination.py`.
 
 ```bash
 git clone https://github.com/sobix13/Ripcars-Gate.git
@@ -87,7 +89,7 @@ The service runs as `ripcarsgate`, with systemd restart, readiness notification,
 
 ## Validation status
 
-All 52 tests passed in an isolated Python virtual environment with real discord.py 2.6.4, Pillow, and real SQLite. No tests were skipped. Python compilation, shell syntax, and the systemd unit syntax check (with a local interpreter substituted) passed. Two new tests cover already-deleted companion messages and preserved Forbidden failures.
+All 79 tests passed in the separately configured Python environment with real discord.py 2.6.4 and SQLite. No tests were skipped. New checks cover mirrored leases, atomic handoff, foreign ownership protection and separate private/shared paths. Four-process suite tests are recorded separately in SUITE_TEST_RESULTS.txt. See TEST_RESULTS.txt for the current execution boundaries.
 
 The suite covers policies, actual bot startup, persistent Discord UI, a complete simulated admin/member entry session, CAPTCHA and role grants, notification role toggles, duplicate-free publishing, daily text submissions, failed-publish cooldown recovery, protected manual changes, shared coordination locks, stale settings, and backup integrity. Discord API calls and transport failures are mocked. This is not a private Discord server or a live gateway session.
 

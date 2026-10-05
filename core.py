@@ -5,7 +5,7 @@ import re
 import unicodedata
 from urllib.parse import urlparse
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 OWNER = "ripcars-gate"
 CLAIM_KEYS = ("collectors", "updates", "announcements", "game")
 DEFAULTS = {

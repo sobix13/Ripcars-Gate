@@ -24,9 +24,9 @@ Run these commands in PowerShell. Enter the address or SSH alias of your VPS. Th
 
 ```powershell
 Set-Location 'C:\Users\macbook\Desktop\files'
-Get-FileHash '.\ripcars-gate-1.0.1.tar.gz' -Algorithm SHA256
+Get-FileHash '.\ripcars-gate-1.0.2.tar.gz' -Algorithm SHA256
 $RipcarsVps = Read-Host 'VPS IP or SSH alias'
-scp '.\ripcars-gate-1.0.1.tar.gz' '.\RIPCARS_GATE_SHA256SUMS.txt' "memecult@${RipcarsVps}:/tmp/"
+scp '.\ripcars-gate-1.0.2.tar.gz' '.\RIPCARS_GATE_SHA256SUMS.txt' "memecult@${RipcarsVps}:/tmp/"
 ssh "memecult@${RipcarsVps}"
 ```
 
@@ -38,7 +38,7 @@ In the SSH session:
 
 ```bash
 cd /tmp
-sha256sum ripcars-gate-1.0.1.tar.gz
+sha256sum ripcars-gate-1.0.2.tar.gz
 cat RIPCARS_GATE_SHA256SUMS.txt
 ```
 
@@ -48,7 +48,7 @@ The TAR checksum must match its row in `RIPCARS_GATE_SHA256SUMS.txt`. ZIP contai
 sudo apt-get update
 sudo apt-get install -y python3 python3-venv python3-pip fonts-dejavu-core
 RIPCARS_UNPACK_DIR=$(mktemp -d /tmp/ripcars-gate-release.XXXXXX)
-tar -xzf /tmp/ripcars-gate-1.0.1.tar.gz -C "$RIPCARS_UNPACK_DIR"
+tar -xzf /tmp/ripcars-gate-1.0.2.tar.gz -C "$RIPCARS_UNPACK_DIR"
 sudo bash "$RIPCARS_UNPACK_DIR/ripcars-gate/scripts/install.sh" "$RIPCARS_UNPACK_DIR/ripcars-gate"
 ```
 
@@ -77,7 +77,7 @@ sudo systemctl status ripcars-gate --no-pager -l
 sudo journalctl -u ripcars-gate -n 80 --no-pager -l
 ```
 
-Wait for `online as` with version `1.0.1`. A running service does not open member entry. Entry starts disabled inside Discord.
+Wait for `online as` with version `1.0.2`. A running service does not open member entry. Entry starts disabled inside Discord.
 
 ## 5. Build the server from Discord
 
@@ -135,4 +135,4 @@ Code rollback does not restore member data or undo Discord changes. Configuratio
 
 ## Package validation status
 
-All 52 tests passed with Python, the real discord.py SDK and real SQLite. No tests were skipped. Discord API requests and transport errors were mocked. The installer reruns all 52 tests on the VPS. Live Discord access, actual guild permissions and production systemd operation remain installation acceptance checks.
+All 79 tests passed with Python, the real discord.py SDK and real SQLite. No tests were skipped. Discord API requests and transport errors were mocked. The installer reruns the full current suite on the VPS. Live Discord access, actual guild permissions and production systemd operation remain installation acceptance checks.

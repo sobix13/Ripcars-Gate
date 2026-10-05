@@ -7,7 +7,9 @@ import re
 import sqlite3
 import time
 import uuid
+import ripcars_coordination as protocol
 from pathlib import Path
+from contextlib import asynccontextmanager
 import captcha
 import core
 
@@ -27,9 +29,11 @@ CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,guild INTE
 class Conflict(ValueError): pass
 
 class Database:
-    def __init__(self, path, coordination_path=None):
+    def __init__(self, path, coordination_path=None, shared=False):
+        if coordination_path and Path(path).resolve()==Path(coordination_path).resolve():raise ValueError('Operational and coordination databases must be separate.')
         self.path = str(path); self._conn = None; self._lock = asyncio.Lock()
-        self.coordination=Database(coordination_path) if coordination_path else None
+        self.shared=shared
+        self.coordination=Database(coordination_path,shared=True) if coordination_path else None
     async def connect(self):
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         def init():
@@ -37,7 +41,9 @@ class Database:
             self._conn.row_factory = sqlite3.Row
             self._conn.execute("PRAGMA journal_mode=WAL")
             self._conn.execute("PRAGMA busy_timeout=15000")
-            self._conn.executescript(SCHEMA); self._conn.commit()
+            self._conn.executescript(SCHEMA)
+            protocol.initialize(self._conn,Conflict); self._conn.commit()
+            if self.shared:protocol.shared_permissions(self.path)
         await asyncio.to_thread(init)
         if self.coordination:await self.coordination.connect()
     async def run(self, fn):
@@ -48,17 +54,21 @@ class Database:
                     value = fn(self._conn); self._conn.commit(); return value
                 except BaseException:
                     self._conn.rollback(); raise
-            return await asyncio.to_thread(transaction)
+            task=asyncio.create_task(asyncio.to_thread(transaction))
+            try:return await asyncio.shield(task)
+            except asyncio.CancelledError:
+                try:await task
+                finally:raise
     async def close(self):
         if self.coordination:await self.coordination.close()
         async with self._lock:
             if self._conn:
                 await asyncio.to_thread(self._conn.close); self._conn = None
     async def query(self, sql, args=()):
-        store=self.coordination if self.coordination and re.search(r"\b(resources|integrations|leases)\b",sql,re.I) else self
+        store=self.coordination if self.coordination and re.search(r"\b(resources|integrations|leases|locks|suite_meta)\b",sql,re.I) else self
         return await store.run(lambda c: [dict(r) for r in c.execute(sql,args).fetchall()])
     async def execute(self, sql, args=()):
-        store=self.coordination if self.coordination and re.search(r"\b(resources|integrations|leases)\b",sql,re.I) else self
+        store=self.coordination if self.coordination and re.search(r"\b(resources|integrations|leases|locks|suite_meta)\b",sql,re.I) else self
         return await store.run(lambda c: c.execute(sql,args).rowcount)
     async def config(self, guild):
         def get(c):
@@ -125,23 +135,41 @@ class Database:
         rows=await self.query("SELECT * FROM resources WHERE guild=?",(guild,))
         return {r["key"]:{**r,"baseline":json.loads(r["baseline"]),"desired":json.loads(r["desired"])} for r in rows}
     async def register(self,guild,key,oid,kind,baseline,desired=None,owner=core.OWNER):
-        await self.execute("INSERT INTO resources VALUES(?,?,?,?,?,?,?,'active') ON CONFLICT(guild,key) DO UPDATE SET object_id=excluded.object_id,kind=excluded.kind,owner=excluded.owner,baseline=excluded.baseline,desired=excluded.desired,state='active'",(guild,key,oid,kind,owner,json.dumps(baseline),json.dumps(desired if desired is not None else baseline)))
+        def put(c):
+            old=c.execute('SELECT owner FROM resources WHERE guild=? AND key=?',(guild,key)).fetchone()
+            if old and old['owner']!=owner:raise Conflict('This resource belongs to another controller. Explicit handoff is required; its binding was preserved.')
+            duplicate=c.execute('SELECT key FROM resources WHERE guild=? AND object_id=? AND key!=?',(guild,oid,key)).fetchone()
+            if duplicate:raise Conflict('This object ID is already registered under another resource key.')
+            c.execute("INSERT INTO resources VALUES(?,?,?,?,?,?,?,'active') ON CONFLICT(guild,key) DO UPDATE SET object_id=excluded.object_id,kind=excluded.kind,owner=excluded.owner,baseline=excluded.baseline,desired=excluded.desired,state='active'",(guild,key,oid,kind,owner,json.dumps(baseline),json.dumps(desired if desired is not None else baseline)))
+        await (self.coordination or self).run(put)
     async def state(self,guild,key,state):
         await self.execute("UPDATE resources SET state=? WHERE guild=? AND key=?",(state,guild,key))
     async def baseline(self,guild,key,value):
         await self.execute("UPDATE resources SET baseline=?,state='active' WHERE guild=? AND key=?",(json.dumps(value),guild,key))
     async def lease(self,guild,key,ttl=180):
-        token=uuid.uuid4().hex;now=time.time()
-        def claim(c):
-            row=c.execute("SELECT * FROM leases WHERE guild=? AND key=?",(guild,key)).fetchone()
-            if row and row["expires"]>now:raise Conflict("Another setup is running. Try again when it finishes.")
-            c.execute("INSERT INTO leases VALUES(?,?,?,?) ON CONFLICT(guild,key) DO UPDATE SET token=excluded.token,expires=excluded.expires",(guild,key,token,now+ttl));return token
-        return await (self.coordination or self).run(claim)
+        return await (self.coordination or self).run(lambda c:protocol.claim(c,guild,key,ttl,error=Conflict))
     async def renew(self,guild,key,token,ttl=180):
-        changed=await self.execute("UPDATE leases SET expires=? WHERE guild=? AND key=? AND token=? AND expires>?",(time.time()+ttl,guild,key,token,time.time()))
-        if not changed:raise Conflict("Setup lock expired. Reopen setup before continuing.")
+        await (self.coordination or self).run(lambda c:protocol.renew(c,guild,key,token,ttl,error=Conflict))
     async def release(self,guild,key,token):
-        await self.execute("DELETE FROM leases WHERE guild=? AND key=? AND token=?",(guild,key,token))
+        await (self.coordination or self).run(lambda c:protocol.release(c,guild,key,token))
+    @asynccontextmanager
+    async def coordinated(self,guild):
+        token=await self.lease(guild,'server-setup')
+        try:yield token
+        finally:await self.release(guild,'server-setup',token)
+    async def handoff(self,guild,keys,bot_id):
+        if type(bot_id) is not int or bot_id<=0:raise Conflict('A numeric companion bot ID is required.')
+        new_owner=f'bot:{bot_id}'
+        async with self.coordinated(guild) as token:
+            def transfer(c):
+                protocol.ensure(c,guild,'server-setup',token,error=Conflict)
+                for key in keys:
+                    row=c.execute('SELECT owner,state FROM resources WHERE guild=? AND key=?',(guild,key)).fetchone()
+                    if not row or (row['owner']==core.OWNER and row['state'] not in ('active','pinned')) or row['owner'] not in (core.OWNER,new_owner):
+                        raise Conflict('Handoff requires reviewed Gate-owned resources. No ownership was changed.')
+                    if row['owner']==new_owner and row['state']!='external':raise Conflict('Companion resource is protected; handoff was stopped.')
+                for key in keys:c.execute("UPDATE resources SET owner=?,state='external' WHERE guild=? AND key=?",(new_owner,guild,key))
+            await (self.coordination or self).run(transfer)
     async def reserve_post(self,guild,user,key,delay):
         now=time.time()
         def take(c):

@@ -96,6 +96,7 @@ class Provisioner:
                 order=["claim_collectors","claim_updates","claim_announcements","claim_game","rippers","og","moderator","admin","team"]
                 if all(roles[k]<guild.me.top_role for k in order):
                     positions=sorted(roles[k].position for k in order)
+                    await self.db.renew(guild.id,'server-setup',token)
                     await guild.edit_role_positions(positions={roles[k]:p for k,p in zip(order,positions)},reason="Ripcars Gate: initial role hierarchy")
             for key,spec in cfg["blueprint"].items():
                 await self.db.renew(guild.id,"server-setup",token)
@@ -117,6 +118,7 @@ class Provisioner:
                             await ch.edit(**edit)
                             # Update only managed flags and retain every foreign overwrite.
                             for target,ow in overwrites(guild,roles,spec).items():
+                                await self.db.renew(guild.id,'server-setup',token)
                                 merged=ch.overwrites_for(target)
                                 for flag,value in ow:
                                     if value is not None:setattr(merged,flag,value)
@@ -149,12 +151,14 @@ class Provisioner:
     async def scan(self,guild):
         if guild.id in self.busy:return []
         changes=[]
-        for key,r in (await self.db.resources(guild.id)).items():
-            if r["owner"]!=core.OWNER or r["state"]!="active":continue
-            obj=guild.get_role(r["object_id"]) if key.startswith("role:") else guild.get_channel(r["object_id"])
-            if not obj:
-                await self.db.state(guild.id,key,"missing");changes.append(key+": missing");continue
-            actual=role_snapshot(obj) if key.startswith("role:") else channel_snapshot(obj,r["baseline"])
-            if actual!=r["baseline"]:
-                await self.db.state(guild.id,key,"manual");changes.append(key+": external change preserved")
+        async with self.db.coordinated(guild.id) as token:
+            for key,r in (await self.db.resources(guild.id)).items():
+                if r["owner"]!=core.OWNER or r["state"]!="active":continue
+                await self.db.renew(guild.id,'server-setup',token)
+                obj=guild.get_role(r["object_id"]) if key.startswith("role:") else guild.get_channel(r["object_id"])
+                if not obj:
+                    await self.db.state(guild.id,key,"missing");changes.append(key+": missing");continue
+                actual=role_snapshot(obj) if key.startswith("role:") else channel_snapshot(obj,r["baseline"])
+                if actual!=r["baseline"]:
+                    await self.db.state(guild.id,key,"manual");changes.append(key+": external change preserved")
         return changes

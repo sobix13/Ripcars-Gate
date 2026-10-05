@@ -1,4 +1,13 @@
-# 1.0.1 compatibility update
+# 1.0.2 four-bot coordination update
+
+- Shared protocol 2 mirrors both legacy lease tables atomically and enforces unique resource IDs.
+- Scans, adoption, companion access and atomic ownership handoff use the shared lease.
+- Foreign resources cannot be rebound or reviewed as Gate-owned; manual handoff blockers are preserved.
+- Private/shared database path equality is rejected, and cancellation waits for SQLite transactions to finish.
+- Added shared protocol regression tests, four-bot rollout guide and multi-process test report.
+- CAPTCHA, one-answer minimum, Rippers and optional notification claims remain unchanged.
+
+## 1.0.1 compatibility update
 
 Same-message deletion races with a companion moderator no longer create false Unknown Message errors or duplicate member notices. Only discord.NotFound is ignored; permission failures remain observable. No entry, question, role, schema, or server-template behavior changed. All 52 local tests passed; live deployment acceptance remains pending.
 

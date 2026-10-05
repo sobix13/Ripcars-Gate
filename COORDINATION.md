@@ -1,6 +1,6 @@
-# Companion coordination protocol, version 1
+# Companion coordination protocol, version 2
 
-No companion process is launched by Gate. This document is the contract to implement in the later combined support/moderation bot and the later holder bot.
+No companion process is launched by Gate. Crew, Raffle and Verifier remain separate installations. See [SUITE_DEPLOYMENT.md](SUITE_DEPLOYMENT.md) for the tested four-bot versions and rollout.
 
 ## Storage and identity
 
@@ -15,6 +15,10 @@ Baseline and desired overwrite maps list the permission fields owned by that con
 ## Mutations
 
 Before any setup, adoption, repair, or handoff, acquire the guild's `server-setup` lease in the shared database. Use BEGIN IMMEDIATE, a random token, and an expiry. Renew during a long operation. Release only if the token matches. This coordinates participating bots only; Discord admins and third-party bots do not honor this lock.
+
+Protocol 2 mirrors `leases(guild,key,token,expires)` and `locks(guild,name,token,expires)` atomically. Both tables are checked before acquisition and renewal. This corrects the prior cross-bot mismatch without deleting legacy locks. Object IDs have a shared uniqueness index. Duplicate existing IDs block initialization for explicit review. All four repositories ship identical `ripcars_coordination.py` code.
+
+Gate's scan, explicit adoption, companion access and ownership handoff also use the shared lease. Handoff validates all selected owners/states in one transaction, so one blocked resource cannot partially transfer the others. Foreign controller records do not appear in Gate's resource review and cannot be rebound through Gate.
 
 Re-read the object and baseline before writing. If a managed field no longer matches baseline, preserve it and mark manual. If the object is missing, mark missing instead of automatically recreating it. Adopt or replace an ID only after explicit admin review.
 
