@@ -43,13 +43,40 @@ class Hostile(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(await self.db.reserve_post(1,42,'gcars',86400))
     async def test_registered_id_cannot_be_silently_claimed_twice(self):
         await self.db.register(1,'channel:general',123,'text',{'name':'general'})
-        import sqlite3
-        with self.assertRaises(sqlite3.IntegrityError):await self.other.register(1,'channel:ticket',123,'text',{'name':'ticket'})
+        with self.assertRaises(Conflict):await self.other.register(1,'channel:ticket',123,'text',{'name':'ticket'})
         self.assertEqual((await self.db.resources(1))['channel:general']['object_id'],123)
     async def test_manual_flag_and_owner_are_visible_to_the_next_bot(self):
         await self.db.register(1,'channel:general',123,'text',{'name':'general'})
         await self.db.state(1,'channel:general','manual')
         self.assertEqual((await self.other.resources(1))['channel:general']['state'],'manual')
+    async def test_foreign_controller_cannot_be_rebound_by_gate(self):
+        await self.db.register(1,'channel:ticket',123,'text',{},owner='bot:900')
+        with self.assertRaises(Conflict):await self.db.register(1,'channel:ticket',456,'text',{})
+        self.assertEqual((await self.db.resources(1))['channel:ticket']['object_id'],123)
+    def test_private_and_shared_paths_cannot_be_same(self):
+        with self.assertRaises(ValueError):Database(self.db.path,self.db.path)
+    async def test_handoff_is_atomic_and_preserves_other_resources(self):
+        await self.db.register(1,'channel:ticket',123,'text',{})
+        await self.db.register(1,'channel:open_tickets',124,'category',{})
+        await self.db.register(1,'channel:general',125,'text',{})
+        await self.db.handoff(1,('channel:ticket','channel:open_tickets'),900)
+        rows=await self.db.resources(1)
+        self.assertEqual((rows['channel:ticket']['owner'],rows['channel:ticket']['state']),('bot:900','external'))
+        self.assertEqual(rows['channel:general']['owner'],'ripcars-gate')
+    async def test_failed_handoff_does_not_partially_transfer(self):
+        await self.db.register(1,'channel:ticket',123,'text',{})
+        await self.db.register(1,'channel:open_tickets',124,'category',{},owner='bot:901')
+        with self.assertRaises(Conflict):await self.db.handoff(1,('channel:ticket','channel:open_tickets'),900)
+        self.assertEqual((await self.db.resources(1))['channel:ticket']['owner'],'ripcars-gate')
+    async def test_handoff_cannot_bypass_a_peer_lease(self):
+        token=await self.other.lease(1,'server-setup')
+        with self.assertRaises(Conflict):await self.db.handoff(1,(),900)
+        await self.other.release(1,'server-setup',token)
+    async def test_manual_resource_requires_review_before_handoff(self):
+        await self.db.register(1,'channel:ticket',123,'text',{})
+        await self.db.state(1,'channel:ticket','manual')
+        with self.assertRaises(Conflict):await self.db.handoff(1,('channel:ticket',),900)
+        self.assertEqual((await self.db.resources(1))['channel:ticket']['state'],'manual')
     def test_link_filter_and_normal_text(self):
         for text in ['https://example.com','www.test.io','discord.gg/test','example.io','https：//test.com','discord\u200b.gg/test']:
             self.assertTrue(core.has_link(text),text)
