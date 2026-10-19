@@ -16,6 +16,7 @@ install -d -m 700 -o ripcarsgate -g ripcarsgate /var/lib/ripcars-gate
 install -d -m 2770 -o root -g ripcars-bots /var/lib/ripcars-bots
 install -d -m 755 "$RELEASE_DIR"
 tar -C "$SOURCE_DIR" --exclude=.git --exclude=releases --exclude=.venv --exclude=.env --exclude=__pycache__ --exclude=.pytest_cache --exclude=data --exclude=backups --exclude=logs --exclude='*.sqlite*' --exclude='*.db*' -cf - . | tar -C "$RELEASE_DIR" -xf -
+chmod 0755 "$RELEASE_DIR"
 # No local state, token, or environment is copied into a release.
 rm -rf "$RELEASE_DIR/.venv" "$RELEASE_DIR/data" "$RELEASE_DIR/backups"
 rm -f "$RELEASE_DIR/.env"
