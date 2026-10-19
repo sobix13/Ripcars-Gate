@@ -34,7 +34,7 @@ class PostModal(gu.SafeModal):
             raise ValueError("Use plain text without links or mentions.")
         await i.response.defer(ephemeral=True)
         row=(await self.bot.db.resources(i.guild_id)).get("channel:gcars")
-        if not row or row["owner"]!=core.OWNER or row["state"]!="active":raise ValueError("gCARS is paused for an admin review.")
+        if not row or row["owner"]!=core.OWNER or row["state"] not in ("active","pinned"):raise ValueError("gCARS is paused for an admin review.")
         cfg,_=await self.bot.db.config(i.guild_id)
         channel=i.guild.get_channel(row["object_id"])
         if not channel or not channel.permissions_for(i.user).view_channel:raise ValueError("This channel is unavailable.")
