@@ -106,6 +106,87 @@ class Discord(unittest.IsolatedAsyncioTestCase):
         self.bot=SimpleNamespace(db=self.db,intents=SimpleNamespace(message_content=True),member_locks=defaultdict(asyncio.Lock),get_cog=lambda k:None)
         self.guild=Guild();self.bot.provisioner=Provisioner(self.bot)
     async def asyncTearDown(self):await self.db.close();self.tmp.cleanup()
+    async def test_approved_manual_channel_keeps_link_filter(self):
+        await self.bot.provisioner.apply(self.guild,1)
+        rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:show_off']['object_id'])
+        await self.db.state(1,'channel:show_off','pinned')
+        user=Member(self.guild);user.send=AsyncMock()
+        msg=SimpleNamespace(guild=self.guild,author=user,channel=ch,content='https://example.com',attachments=[],delete=AsyncMock())
+        await Community(self.bot).on_message(msg)
+        msg.delete.assert_awaited_once()
+
+    async def test_approved_pinned_panel_can_be_explicitly_refreshed(self):
+        admin=await self.ready_server();await admin.publish(self.guild)
+        rows=await self.db.resources(1);ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        await self.db.state(1,'channel:gcars','pinned')
+        ch.fetch_message.reset_mock();await admin.publish(self.guild)
+        ch.fetch_message.assert_awaited_once()
+        self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'pinned')
+
+    async def test_setup_preview_rejects_settings_edited_before_confirmation(self):
+        admin=Admin(self.bot);owner=Member(self.guild,1)
+        i=interaction(self.guild,owner);await admin.action(i,'preview')
+        confirm=i.followup.send.await_args.kwargs['view'].children[0]
+        cfg,rev=await self.db.config(1);cfg['brand']='New unreviewed brand'
+        await self.db.save_config(1,cfg,rev,1)
+        with self.assertRaises(ValueError):await confirm.callback(interaction(self.guild,owner))
+        self.assertEqual(await self.db.resources(1),{})
+
+    async def test_panel_acknowledges_before_waiting_for_database(self):
+        admin=Admin(self.bot);i=interaction(self.guild,Member(self.guild,1))
+        original=self.db.config
+        async def slow(*args):
+            self.assertTrue(i.response.is_done())
+            return await original(*args)
+        self.db.config=slow
+        await admin.panel(i)
+
+    async def test_resource_review_can_reach_more_than_twenty_five_items(self):
+        admin=await self.ready_server()
+        for key in await self.db.resources(1):await self.db.state(1,key,'manual')
+        i=interaction(self.guild,Member(self.guild,1))
+        await admin.action(i,'review')
+        response=i.followup.send if i.response.is_done() else i.response.send_message
+        view=response.await_args.kwargs['view']
+        menu=next(x for x in view.children if isinstance(x,discord.ui.Select))
+        first={o.value for o in menu.options}
+        next_button=next((x for x in view.children if isinstance(x,discord.ui.Button) and x.label=='Next'),None)
+        self.assertIsNotNone(next_button)
+        page=interaction(self.guild,Member(self.guild,1));await next_button.callback(page)
+        second=next(x for x in page.response.edit_message.await_args.kwargs['view'].children if isinstance(x,discord.ui.Select))
+        self.assertFalse(first & {o.value for o in second.options})
+        self.assertEqual(first | {o.value for o in second.options},set(await self.db.resources(1)))
+
+    async def reviewed_action(self,admin,key,label):
+        owner=Member(self.guild,1);i=interaction(self.guild,owner)
+        await admin.review(i,key)
+        response=i.followup.send if i.response.is_done() else i.response.send_message
+        button=next(x for x in response.await_args.kwargs['view'].children if x.label==label)
+        confirmation=interaction(self.guild,owner);await button.callback(confirmation)
+        return confirmation.response.send_message.await_args.kwargs['view'].children[0]
+
+    async def test_keep_current_rejects_edit_after_preview(self):
+        admin=await self.ready_server();rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        ch.name='reviewed-name';await self.bot.provisioner.scan(self.guild)
+        confirm=await self.reviewed_action(admin,'channel:gcars','Keep current')
+        ch.name='not-reviewed-name'
+        with self.assertRaises(ValueError):await confirm.callback(interaction(self.guild,Member(self.guild,1)))
+        self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'manual')
+
+    async def test_resource_restore_does_not_apply_unrelated_template(self):
+        admin=await self.ready_server();rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        ch.name='manual-name';await self.bot.provisioner.scan(self.guild)
+        cfg,rev=await self.db.config(1);cfg['blueprint']['general']['slowmode']=30
+        await self.db.save_config(1,cfg,rev,1)
+        confirm=await self.reviewed_action(admin,'channel:gcars','Restore template')
+        general=self.guild.get_channel(rows['channel:general']['object_id'])
+        await confirm.callback(interaction(self.guild,Member(self.guild,1)))
+        self.assertEqual(general.slowmode_delay,0)
+        self.assertEqual((await self.db.resources(1))['channel:general']['desired']['slowmode'],0)
+
     async def test_setup_is_repeatable_and_preserves_unknown_resources(self):
         unknown=await self.guild.create_text_channel(name='external-chat',overwrites={})
         first=await self.bot.provisioner.apply(self.guild,1);counts=(len(self.guild.roles),len(self.guild.channels))
@@ -230,7 +311,7 @@ class Discord(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'manual')
         owner=Member(self.guild,1);review=interaction(self.guild,owner)
         await admin.review(review,'channel:gcars')
-        keep=review.response.send_message.await_args.kwargs['view'].children[0]
+        keep=review.followup.send.await_args.kwargs['view'].children[0]
         confirmation=interaction(self.guild,owner);await keep.callback(confirmation)
         confirm=confirmation.response.send_message.await_args.kwargs['view'].children[0]
         await confirm.callback(interaction(self.guild,owner))
