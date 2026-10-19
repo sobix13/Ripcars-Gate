@@ -144,8 +144,8 @@ class Database:
         await (self.coordination or self).run(put)
     async def state(self,guild,key,state):
         await self.execute("UPDATE resources SET state=? WHERE guild=? AND key=?",(state,guild,key))
-    async def baseline(self,guild,key,value):
-        await self.execute("UPDATE resources SET baseline=?,state='active' WHERE guild=? AND key=?",(json.dumps(value),guild,key))
+    async def baseline(self,guild,key,value,state="active"):
+        await self.execute("UPDATE resources SET baseline=?,state=? WHERE guild=? AND key=?",(json.dumps(value),state,guild,key))
     async def lease(self,guild,key,ttl=180):
         return await (self.coordination or self).run(lambda c:protocol.claim(c,guild,key,ttl,error=Conflict))
     async def renew(self,guild,key,token,ttl=180):

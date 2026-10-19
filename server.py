@@ -58,13 +58,25 @@ class Provisioner:
             r=res.get("channel:"+key);obj=guild.get_channel(r["object_id"]) if r else None
             lines.append(f"{spec['name']}: {'check existing ID' if obj else 'missing registered ID; review' if r else 'name conflict; bind ID' if any(x.name==spec['name'] for x in guild.channels) else 'create'}")
         return lines
-    async def apply(self,guild,actor,automatic=False):
+    async def apply(self,guild,actor,automatic=False,*,review=None,revision=None):
         token=await self.db.lease(guild.id,"server-setup");results=[];created=set()
         self.busy.add(guild.id)
         try:
-            cfg,_=await self.db.config(guild.id)
+            cfg,current_revision=await self.db.config(guild.id)
+            if revision is not None and revision!=current_revision:
+                raise ValueError('Settings changed. Preview setup again.')
             core.validate(cfg)
+            only=None
+            if review is not None:
+                only,expected,snapshot,expected_revision=review
+                fresh=(await self.db.resources(guild.id)).get(only)
+                obj=guild.get_role(expected["object_id"]) if only.startswith("role:") else guild.get_channel(expected["object_id"])
+                actual=(role_snapshot(obj) if only.startswith("role:") else channel_snapshot(obj,expected["baseline"])) if obj else None
+                if fresh!=expected or fresh['owner']!=core.OWNER or actual!=snapshot or current_revision!=expected_revision:
+                    raise ValueError('Resource or settings changed. Reopen review.')
+                await self.db.baseline(guild.id,only,snapshot)
             for key,(base_name,flags) in core.ROLE_SPECS.items():
+                if only is not None and only!='role:'+key:continue
                 await self.db.renew(guild.id,"server-setup",token)
                 name=cfg["claims"].get(key[6:],base_name) if key.startswith("claim_") else cfg["role_names"][key]
                 desired=dict(name=name,color=cfg["color"],permissions=discord.Permissions(**{f:True for f in flags}).value)
@@ -99,6 +111,7 @@ class Provisioner:
                     await self.db.renew(guild.id,'server-setup',token)
                     await guild.edit_role_positions(positions={roles[k]:p for k,p in zip(order,positions)},reason="Ripcars Gate: initial role hierarchy")
             for key,spec in cfg["blueprint"].items():
+                if only is not None and only!='channel:'+key:continue
                 await self.db.renew(guild.id,"server-setup",token)
                 res=await self.db.resources(guild.id);rk="channel:"+key;r=res.get(rk)
                 parent_row=res.get("channel:"+str(spec["parent"]));parent=guild.get_channel(parent_row["object_id"]) if parent_row else None
@@ -139,7 +152,7 @@ class Provisioner:
                     results.append(f"FAILED {spec['name']}: {exc}")
             res=await self.db.resources(guild.id)
             ops=res.get("channel:gate_log")
-            if ops:
+            if ops and only is None:
                 current,revision=await self.db.config(guild.id)
                 if current["ops_channel_id"] is None:
                     current["ops_channel_id"]=ops["object_id"];await self.db.save_config(guild.id,current,revision,actor)
