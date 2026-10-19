@@ -222,6 +222,41 @@ class Discord(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(RuntimeError):await modal.on_submit(interaction(self.guild,user))
         ch.send.side_effect=None
         await modal.on_submit(interaction(self.guild,user));self.assertEqual(ch.send.await_count,2)
+    async def test_gcars_keep_current_resumes_posts_without_restoring_manual_name(self):
+        admin=await self.ready_server();rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        ch.name='\U0001f48e\u3164\u2506\u3164gcars'
+        await self.bot.provisioner.scan(self.guild)
+        self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'manual')
+        owner=Member(self.guild,1);review=interaction(self.guild,owner)
+        await admin.review(review,'channel:gcars')
+        keep=review.response.send_message.await_args.kwargs['view'].children[0]
+        confirmation=interaction(self.guild,owner);await keep.callback(confirmation)
+        confirm=confirmation.response.send_message.await_args.kwargs['view'].children[0]
+        await confirm.callback(interaction(self.guild,owner))
+        self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'pinned')
+        user=Member(self.guild);user.roles.append(self.guild.get_role(rows['role:rippers']['object_id']))
+        modal=PostModal(self.bot);modal.text._value='My dream car is an F40'
+        await modal.on_submit(interaction(self.guild,user))
+        self.assertEqual(ch.name,'\U0001f48e\u3164\u2506\u3164gcars');ch.send.assert_awaited_once()
+        with self.assertRaises(ValueError):await modal.on_submit(interaction(self.guild,user))
+    async def test_gcars_unreviewed_resources_stay_paused_without_consuming_cooldown(self):
+        await self.ready_server();rows=await self.db.resources(1);user=Member(self.guild)
+        user.roles.append(self.guild.get_role(rows['role:rippers']['object_id']))
+        modal=PostModal(self.bot);modal.text._value='F40'
+        for state in ('manual','missing','partial','external'):
+            await self.db.state(1,'channel:gcars',state)
+            with self.assertRaisesRegex(ValueError,'paused'):await modal.on_submit(interaction(self.guild,user))
+        ch=self.guild.get_channel(rows['channel:gcars']['object_id']);ch.send.assert_not_awaited()
+        await self.db.state(1,'channel:gcars','pinned')
+        await modal.on_submit(interaction(self.guild,user));ch.send.assert_awaited_once()
+    async def test_gcars_pinned_resource_owned_by_another_controller_stays_paused(self):
+        await self.ready_server();rows=await self.db.resources(1);user=Member(self.guild)
+        user.roles.append(self.guild.get_role(rows['role:rippers']['object_id']))
+        await self.db.execute("UPDATE resources SET owner=?,state='pinned' WHERE guild=? AND key=?",('other-bot',1,'channel:gcars'))
+        modal=PostModal(self.bot);modal.text._value='F40'
+        with self.assertRaisesRegex(ValueError,'paused'):await modal.on_submit(interaction(self.guild,user))
+        self.guild.get_channel(rows['channel:gcars']['object_id']).send.assert_not_awaited()
     async def test_public_panel_republish_edits_recorded_messages(self):
         admin=await self.ready_server();await admin.publish(self.guild)
         sends=sum(ch.send.await_count for ch in self.guild.channels if hasattr(ch,'send'))
