@@ -56,17 +56,24 @@ class Editor(gu.SafeModal):
             self.inputs[key]=inp;self.add_item(inp)
     async def on_submit(self,i):
         if i.user.id!=self.user or not await gu.require(self.bot,i):return
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         values={key:x.value.strip() for key,x in self.inputs.items()}
         self.save(self.cfg,values)
         await self.bot.db.save_config(i.guild_id,self.cfg,self.revision,i.user.id)
         await gu.reply(i,"Saved. Active managed resources update at the next monitoring pass. Preview setup for structural changes. Use Publish panels to refresh public messages.")
 
 class Choice(AdminView):
-    def __init__(self,cog,user,options,action,placeholder="Choose an item"):
+    def __init__(self,cog,user,options,action,placeholder="Choose an item",page=0):
         super().__init__(cog,user)
-        menu=discord.ui.Select(placeholder=placeholder,options=options)
+        menu=discord.ui.Select(placeholder=placeholder,options=options[page*25:(page+1)*25])
         async def choose(i):await action(i,menu.values[0])
         menu.callback=choose;self.add_item(menu)
+        for label,target in (("Previous",page-1),("Next",page+1)):
+            if 0<=target<((len(options)+24)//25):
+                button=discord.ui.Button(label=label,row=1)
+                async def move(i,p=target):
+                    await i.response.edit_message(view=Choice(cog,user,options,action,placeholder,p))
+                button.callback=move;self.add_item(button)
 
 class Hub(AdminView):
     def __init__(self,cog,user):
@@ -114,9 +121,11 @@ class Admin(commands.Cog):
         cfg,_=await self.bot.db.config(i.guild_id)
         await gu.reply(i,embed=gu.embed(cfg,"Rip Cars guide","Start in Verification. Pass the CAPTCHA and answer at least one question to get the member role. Choose optional roles in Notifications. OG is assigned by an admin. Holder verification and the support bot will be connected later.\nApp: "+cfg["website"]))
     async def panel(self,i):
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id)
         await gu.reply(i,embed=gu.embed(cfg,"Setup center","Choose a section below. Changes stay separate from companion bots. Member entry is "+("active." if cfg["enabled"] else "paused.")),view=Hub(self,i.user.id))
     async def section(self,i,key):
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id)
         if key=="health":await self.show_health(i);return
         detail=SECTIONS[key][1]
@@ -125,18 +134,21 @@ class Admin(commands.Cog):
         await gu.reply(i,embed=gu.embed(cfg,SECTIONS[key][0],detail),view=SectionView(self,i.user.id,key))
     async def action(self,i,action):
         if not await gu.require(self.bot,i):return
+        if action not in ("captcha","brand","add_question","bind","integration") and not i.response.is_done():
+            await i.response.defer(ephemeral=True)
         cfg,revision=await self.bot.db.config(i.guild_id)
         async def editor(title,fields,save):await i.response.send_modal(Editor(self,i.user.id,cfg,revision,title,fields,save))
         async def choose(options,fn):await gu.reply(i,"Choose an item.",view=Choice(self,i.user.id,options,fn))
         if action=="preview":
-            await i.response.defer(ephemeral=True)
+            if not i.response.is_done():await i.response.defer(ephemeral=True)
             lines=await self.bot.provisioner.plan(i.guild)
             async def apply(j):
-                results=await self.bot.provisioner.apply(j.guild,j.user.id)
+                results=await self.bot.provisioner.apply(j.guild,j.user.id,revision=revision)
                 await gu.reply(j,"Setup finished. Review the attached result before activating entry.",file=discord.File(io.BytesIO("\n".join(results).encode()),filename="setup-result.txt"))
             await gu.reply(i,"Preview: roles and per-channel access will be created or updated. Existing manual changes and unknown resources stay protected.",file=discord.File(io.BytesIO("\n".join(lines).encode()),filename="setup-preview.txt"),view=Confirm(self,i.user.id,apply,"Apply setup"))
         elif action=="publish":
-            await i.response.defer(ephemeral=True);await self.publish(i.guild)
+            if not i.response.is_done():await i.response.defer(ephemeral=True)
+            await self.publish(i.guild)
             await gu.reply(i,"Public messages and persistent buttons have been refreshed.")
         elif action=="toggle":
             if not cfg["enabled"]:
@@ -166,15 +178,15 @@ class Admin(commands.Cog):
             res=await self.bot.db.resources(i.guild_id)
             keys=[k for k,r in res.items() if r['owner']==core.OWNER and r["state"]!="active"]
             if not keys:await gu.reply(i,"No protected or missing resources need review.");return
-            await choose([discord.SelectOption(label=k[:100],value=k) for k in keys[:25]],self.review)
+            await choose([discord.SelectOption(label=k[:100],value=k) for k in keys],self.review)
         elif action=="integration":await i.response.send_modal(IntegrationModal(self,i.user.id))
         elif action=="integration_review":
             rows=await self.bot.db.query("SELECT * FROM integrations WHERE guild=?",(i.guild_id,))
             if not rows:await gu.reply(i,"No companion bots are registered. Gate works independently.");return
-            await choose([discord.SelectOption(label=f"{r['bot']} · {r['scope']} · {'active' if r['active'] else 'inactive'}"[:100],value=str(r["bot"])) for r in rows[:25]],self.integration_review)
+            await choose([discord.SelectOption(label=f"{r['bot']} · {r['scope']} · {'active' if r['active'] else 'inactive'}"[:100],value=str(r["bot"])) for r in rows],self.integration_review)
         elif action=="health":await self.show_health(i)
         elif action=="backup":
-            await i.response.defer(ephemeral=True)
+            if not i.response.is_done():await i.response.defer(ephemeral=True)
             path=await asyncio.to_thread(health.run_backup,self.bot.db.path)
             if self.bot.db.coordination:await asyncio.to_thread(health.run_backup,self.bot.db.coordination.path)
             await gu.reply(i,"Backup created: "+(path.name if path else "database not found"))
@@ -248,7 +260,7 @@ class Admin(commands.Cog):
             ch=await gu.resource(self.bot,guild,key)
             if not ch or not isinstance(ch,discord.TextChannel):continue
             r=(await self.bot.db.resources(guild.id))["channel:"+key]
-            if r["owner"]!=core.OWNER or r["state"]!="active":continue
+            if r["owner"]!=core.OWNER or r["state"] not in ("active","pinned"):continue
             titlekey,textkey,view=mapping.get(key,(None,key,None))
             e=gu.embed(cfg,cfg["texts"][titlekey] if titlekey else cfg["blueprint"][key]["name"].replace("-"," ").title(),cfg["texts"][textkey])
             rows=await self.bot.db.query("SELECT * FROM panels WHERE guild=? AND key=?",(guild.id,key))
@@ -261,7 +273,7 @@ class Admin(commands.Cog):
                 msg=await ch.send(embed=e,view=view,allowed_mentions=discord.AllowedMentions.none())
                 await self.bot.db.execute("INSERT INTO panels VALUES(?,?,?,?) ON CONFLICT(guild,key) DO UPDATE SET channel=excluded.channel,message=excluded.message",(guild.id,key,ch.id,msg.id))
     async def show_health(self,i):
-        await i.response.defer(ephemeral=True)
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id);snap=await health.snapshot(self.bot,i.guild_id)
         issues=await self.blockers(i.guild)
         details=f"Version: {core.VERSION}\nUptime: {health.format_uptime(snap['uptime'])}\nGateway: {snap['latency_ms']} ms\nDatabase: {'OK' if snap['db_ok'] else 'FAILED'}\nBackups: {snap['backups']}\nLatest backup: {snap['last_backup']}\nEntry: {'active' if cfg['enabled'] else 'paused'}\nMembers: {snap['verification']}\nWatchdog: {'on' if snap['watchdog'] else 'off'}\n\nBlockers:\n"+("\n".join(issues) or "None")
@@ -269,7 +281,9 @@ class Admin(commands.Cog):
         details+="\n\nRecent errors:\n"+("\n".join(r["details"] for r in errors) or "None")
         await gu.reply(i,embed=gu.embed(cfg,"Health & troubleshooting",details),view=SectionView(self,i.user.id,"health") if await gu.authorized(self.bot,i) else None)
     async def review(self,i,key):
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         rows=await self.bot.db.resources(i.guild_id);r=rows[key]
+        _,revision=await self.bot.db.config(i.guild_id)
         if r['owner']!=core.OWNER:raise ValueError('Use the owning bot to review this resource. Gate did not change it.')
         obj=i.guild.get_role(r["object_id"]) if key.startswith("role:") else i.guild.get_channel(r["object_id"])
         if not obj:await gu.reply(i,"This resource was deleted. Use Bind an existing ID to choose a replacement.");return
@@ -277,16 +291,13 @@ class Admin(commands.Cog):
         async def keep(j):
             async with self.bot.db.coordinated(j.guild_id):
                 fresh=(await self.bot.db.resources(j.guild_id)).get(key)
-                if not fresh or fresh['owner']!=core.OWNER or fresh['object_id']!=r['object_id']:raise ValueError('Resource ownership or binding changed. Reopen review.')
-                await self.bot.db.baseline(j.guild_id,key,current)
-                await self.bot.db.state(j.guild_id,key,"pinned")
+                obj=j.guild.get_role(r["object_id"]) if key.startswith("role:") else j.guild.get_channel(r["object_id"])
+                actual=(role_snapshot(obj) if key.startswith("role:") else channel_snapshot(obj,r["baseline"])) if obj else None
+                if fresh!=r or actual!=current:raise ValueError('Resource changed. Reopen review.')
+                await self.bot.db.baseline(j.guild_id,key,current,"pinned")
             await gu.reply(j,"Current settings kept. Automatic changes stay disabled for this resource.")
         async def restore(j):
-            async with self.bot.db.coordinated(j.guild_id):
-                fresh=(await self.bot.db.resources(j.guild_id)).get(key)
-                if not fresh or fresh['owner']!=core.OWNER or fresh['object_id']!=r['object_id']:raise ValueError('Resource ownership or binding changed. Reopen review.')
-                await self.bot.db.baseline(j.guild_id,key,current)
-            result=await self.bot.provisioner.apply(j.guild,j.user.id)
+            result=await self.bot.provisioner.apply(j.guild,j.user.id,review=(key,r,current,revision))
             await gu.reply(j,"Template application result:",file=discord.File(io.BytesIO("\n".join(result).encode()),filename="repair-result.txt"))
         view=AdminView(self,i.user.id)
         for label,fn in [("Keep current",keep),("Restore template",restore)]:

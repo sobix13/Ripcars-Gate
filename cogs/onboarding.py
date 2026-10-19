@@ -40,6 +40,7 @@ class AnswerModal(gu.SafeModal):
         self.add_item(self.answer)
     async def on_submit(self,i):
         if i.user.id!=self.user:await gu.reply(i,"This form belongs to another member.");return
+        await i.response.defer(ephemeral=True)
         async with self.cog.locks[(i.guild_id,i.user.id)]:
             cfg,_=await self.bot.db.config(i.guild_id)
             if not cfg["enabled"]:raise ValueError("Verification is paused.")
@@ -69,6 +70,7 @@ class VerificationView(gu.SafeView):
     @discord.ui.button(label="My status / Continue",custom_id="ripcars:gate:status")
     async def status(self,i,b):
         if not i.guild or i.user.bot:return
+        await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id);s=await self.bot.db.session(i.guild_id,i.user.id)
         role=await gu.resource(self.bot,i.guild,"rippers",True)
         if role and role.id in {r.id for r in i.user.roles}:await gu.reply(i,"Your member role is active.");return

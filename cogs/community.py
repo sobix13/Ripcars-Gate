@@ -12,6 +12,7 @@ class ClaimsView(gu.SafeView):
         for key in core.CLAIM_KEYS:
             button=discord.ui.Button(label=labels[key][:80],custom_id="ripcars:claim:"+key)
             async def toggle(i,k=key):
+                await i.response.defer(ephemeral=True)
                 if not await gu.member_gate(self.bot,i):return
                 async with self.bot.member_locks[(i.guild_id,i.user.id)]:
                     role=await gu.resource(self.bot,i.guild,"claim_"+k,True)
@@ -28,11 +29,11 @@ class PostModal(gu.SafeModal):
         self.text=discord.ui.TextInput(label="Your text",style=discord.TextStyle.paragraph,max_length=1800)
         self.add_item(self.text)
     async def on_submit(self,i):
+        await i.response.defer(ephemeral=True)
         if not await gu.member_gate(self.bot,i):return
         text=self.text.value.strip()
         if not text or core.has_link(text) or "<@" in text or "@everyone" in text or "@here" in text:
             raise ValueError("Use plain text without links or mentions.")
-        await i.response.defer(ephemeral=True)
         row=(await self.bot.db.resources(i.guild_id)).get("channel:gcars")
         if not row or row["owner"]!=core.OWNER or row["state"] not in ("active","pinned"):raise ValueError("gCARS is paused for an admin review.")
         cfg,_=await self.bot.db.config(i.guild_id)
@@ -59,7 +60,7 @@ class Community(commands.Cog):
         if not msg.guild or msg.author.bot or msg.author.guild_permissions.manage_messages:return
         rows=await self.bot.db.resources(msg.guild.id)
         row=next((r for k,r in rows.items() if k.startswith("channel:") and r["object_id"]==getattr(msg.channel,"parent_id",None)),None) if isinstance(msg.channel,discord.Thread) else next((r for k,r in rows.items() if k.startswith("channel:") and r["object_id"]==msg.channel.id),None)
-        if not row or row["owner"]!=core.OWNER or row["state"]!="active":return
+        if not row or row["owner"]!=core.OWNER or row["state"] not in ("active","pinned"):return
         cfg,_=await self.bot.db.config(msg.guild.id);spec=cfg["blueprint"].get(row["key"][8:])
         if not spec:return
         reason=None
