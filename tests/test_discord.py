@@ -39,6 +39,7 @@ class Channel:
         self.ows={target:copy.copy(ow) for target,ow in kw.get('overwrites',{}).items()}
         self.deleted=False
     def overwrites_for(self,target):return copy.copy(self.ows.get(target,discord.PermissionOverwrite()))
+    def permissions_for(self,target):return discord.Permissions.all()
     async def edit(self,**kw):
         self.name=kw.get('name',self.name);self.topic=kw.get('topic',self.topic);self.slowmode_delay=kw.get('slowmode_delay',self.slowmode_delay)
         if 'category' in kw:self.category_id=getattr(kw['category'],'id',None)
@@ -106,6 +107,87 @@ class Discord(unittest.IsolatedAsyncioTestCase):
         self.bot=SimpleNamespace(db=self.db,intents=SimpleNamespace(message_content=True),member_locks=defaultdict(asyncio.Lock),get_cog=lambda k:None)
         self.guild=Guild();self.bot.provisioner=Provisioner(self.bot)
     async def asyncTearDown(self):await self.db.close();self.tmp.cleanup()
+    async def test_approved_manual_channel_keeps_link_filter(self):
+        await self.bot.provisioner.apply(self.guild,1)
+        rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:show_off']['object_id'])
+        await self.db.state(1,'channel:show_off','pinned')
+        user=Member(self.guild);user.send=AsyncMock()
+        msg=SimpleNamespace(guild=self.guild,author=user,channel=ch,content='https://example.com',attachments=[],delete=AsyncMock())
+        await Community(self.bot).on_message(msg)
+        msg.delete.assert_awaited_once()
+
+    async def test_approved_pinned_panel_can_be_explicitly_refreshed(self):
+        admin=await self.ready_server();await admin.publish(self.guild)
+        rows=await self.db.resources(1);ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        await self.db.state(1,'channel:gcars','pinned')
+        ch.fetch_message.reset_mock();await admin.publish(self.guild)
+        ch.fetch_message.assert_awaited_once()
+        self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'pinned')
+
+    async def test_setup_preview_rejects_settings_edited_before_confirmation(self):
+        admin=Admin(self.bot);owner=Member(self.guild,1)
+        i=interaction(self.guild,owner);await admin.action(i,'preview')
+        confirm=i.followup.send.await_args.kwargs['view'].children[0]
+        cfg,rev=await self.db.config(1);cfg['brand']='New unreviewed brand'
+        await self.db.save_config(1,cfg,rev,1)
+        with self.assertRaises(ValueError):await confirm.callback(interaction(self.guild,owner))
+        self.assertEqual(await self.db.resources(1),{})
+
+    async def test_panel_acknowledges_before_waiting_for_database(self):
+        admin=Admin(self.bot);i=interaction(self.guild,Member(self.guild,1))
+        original=self.db.config
+        async def slow(*args):
+            self.assertTrue(i.response.is_done())
+            return await original(*args)
+        self.db.config=slow
+        await admin.panel(i)
+
+    async def test_resource_review_can_reach_more_than_twenty_five_items(self):
+        admin=await self.ready_server()
+        for key in await self.db.resources(1):await self.db.state(1,key,'manual')
+        i=interaction(self.guild,Member(self.guild,1))
+        await admin.action(i,'review')
+        response=i.followup.send if i.response.is_done() else i.response.send_message
+        view=response.await_args.kwargs['view']
+        menu=next(x for x in view.children if isinstance(x,discord.ui.Select))
+        first={o.value for o in menu.options}
+        next_button=next((x for x in view.children if isinstance(x,discord.ui.Button) and x.label=='Next'),None)
+        self.assertIsNotNone(next_button)
+        page=interaction(self.guild,Member(self.guild,1));await next_button.callback(page)
+        second=next(x for x in page.response.edit_message.await_args.kwargs['view'].children if isinstance(x,discord.ui.Select))
+        self.assertFalse(first & {o.value for o in second.options})
+        self.assertEqual(first | {o.value for o in second.options},set(await self.db.resources(1)))
+
+    async def reviewed_action(self,admin,key,label):
+        owner=Member(self.guild,1);i=interaction(self.guild,owner)
+        await admin.review(i,key)
+        response=i.followup.send if i.response.is_done() else i.response.send_message
+        button=next(x for x in response.await_args.kwargs['view'].children if x.label==label)
+        confirmation=interaction(self.guild,owner);await button.callback(confirmation)
+        return confirmation.response.send_message.await_args.kwargs['view'].children[0]
+
+    async def test_keep_current_rejects_edit_after_preview(self):
+        admin=await self.ready_server();rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        ch.name='reviewed-name';await self.bot.provisioner.scan(self.guild)
+        confirm=await self.reviewed_action(admin,'channel:gcars','Keep current')
+        ch.name='not-reviewed-name'
+        with self.assertRaises(ValueError):await confirm.callback(interaction(self.guild,Member(self.guild,1)))
+        self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'manual')
+
+    async def test_resource_restore_does_not_apply_unrelated_template(self):
+        admin=await self.ready_server();rows=await self.db.resources(1)
+        ch=self.guild.get_channel(rows['channel:gcars']['object_id'])
+        ch.name='manual-name';await self.bot.provisioner.scan(self.guild)
+        cfg,rev=await self.db.config(1);cfg['blueprint']['general']['slowmode']=30
+        await self.db.save_config(1,cfg,rev,1)
+        confirm=await self.reviewed_action(admin,'channel:gcars','Restore template')
+        general=self.guild.get_channel(rows['channel:general']['object_id'])
+        await confirm.callback(interaction(self.guild,Member(self.guild,1)))
+        self.assertEqual(general.slowmode_delay,0)
+        self.assertEqual((await self.db.resources(1))['channel:general']['desired']['slowmode'],0)
+
     async def test_setup_is_repeatable_and_preserves_unknown_resources(self):
         unknown=await self.guild.create_text_channel(name='external-chat',overwrites={})
         first=await self.bot.provisioner.apply(self.guild,1);counts=(len(self.guild.roles),len(self.guild.channels))
@@ -136,6 +218,98 @@ class Discord(unittest.IsolatedAsyncioTestCase):
         cid=rows['channel:general']['object_id'];self.guild.channels=[c for c in self.guild.channels if c.id!=cid]
         count=len(self.guild.channels);await self.bot.provisioner.apply(self.guild,1,automatic=True)
         self.assertEqual(len(self.guild.channels),count);self.assertEqual((await self.db.resources(1))['channel:general']['state'],'missing')
+    async def test_questions_off_grants_after_captcha_without_answers_or_deadlock(self):
+        await self.bot.provisioner.apply(self.guild,1)
+        cfg,rev=await self.db.config(1);cfg.update(enabled=True,questions_enabled=False)
+        await self.db.save_config(1,cfg,rev,1)
+        from captcha import create
+        ch=create();token=await self.db.challenge(1,42,ch,300)
+        await self.db.check_captcha(1,42,token,ch.answer,cfg)
+        user=Member(self.guild);cog=Onboarding(self.bot)
+        await asyncio.wait_for(cog.start(interaction(self.guild,user)),2)
+        self.assertEqual(user.added,1)
+        self.assertEqual((await self.db.session(1,42))['answers'],{})
+        self.assertEqual((await self.db.session(1,42))['verified'],1)
+
+    async def test_questions_off_still_rejects_missing_expired_or_locked_captcha(self):
+        await self.bot.provisioner.apply(self.guild,1)
+        cfg,rev=await self.db.config(1);cfg.update(enabled=True,questions_enabled=False)
+        await self.db.save_config(1,cfg,rev,1)
+        user=Member(self.guild);cog=Onboarding(self.bot)
+        with self.assertRaises(ValueError):await cog.finish(interaction(self.guild,user))
+        await self.db.begin(1,42)
+        for until,locked in ((0,0),(9999999999,9999999999)):
+            await self.db.execute('UPDATE sessions SET captcha_until=?,locked_until=? WHERE guild=1 AND user=42',(until,locked))
+            with self.assertRaises(ValueError):await cog.finish(interaction(self.guild,user))
+        self.assertEqual(user.added,0)
+
+    async def test_question_toggle_preserves_questions_and_updates_only_entry_panel(self):
+        admin=await self.ready_server();await admin.publish(self.guild)
+        before,_=await self.db.config(1)
+        for ch in self.guild.channels:
+            if hasattr(ch,'fetch_message'):ch.fetch_message.reset_mock()
+        await admin.action(interaction(self.guild,Member(self.guild,1)),'questions_toggle')
+        after,_=await self.db.config(1)
+        self.assertFalse(after['questions_enabled']);self.assertEqual(after['questions'],before['questions'])
+        rows=await self.db.resources(1)
+        for ch in self.guild.channels:
+            if hasattr(ch,'fetch_message') and ch.id!=rows['channel:verification']['object_id']:ch.fetch_message.assert_not_awaited()
+        self.assertEqual(core.welcome_text(after),'Complete the CAPTCHA to join the garage.')
+
+    async def test_legacy_settings_remain_enabled_without_rewriting_on_read(self):
+        import json
+        cfg,rev=await self.db.config(1)
+        for key in ('questions_enabled','claims_enabled','gcars_enabled','channel_filters_enabled'):cfg.pop(key)
+        raw=json.dumps(cfg)
+        await self.db.execute('UPDATE settings SET body=? WHERE guild=1',(raw,))
+        fresh,current=await self.db.config(1)
+        self.assertTrue(fresh['questions_enabled']);self.assertEqual(current,rev)
+        self.assertEqual((await self.db.query('SELECT body FROM settings WHERE guild=1'))[0]['body'],raw)
+
+    async def test_disabled_channel_filter_does_not_read_resources(self):
+        cfg,rev=await self.db.config(1);cfg['channel_filters_enabled']=False
+        await self.db.save_config(1,cfg,rev,1)
+        self.db.resources=AsyncMock()
+        await Community(self.bot).on_message(SimpleNamespace(guild=self.guild,author=Member(self.guild),content='https://example.com'))
+        self.db.resources.assert_not_awaited()
+
+    async def test_disabled_community_buttons_do_not_reserve_or_grant(self):
+        cfg,rev=await self.db.config(1);cfg.update(claims_enabled=False,gcars_enabled=False)
+        await self.db.save_config(1,cfg,rev,1)
+        self.db.resources=AsyncMock();self.db.reserve_post=AsyncMock()
+        i=interaction(self.guild,Member(self.guild))
+        await ClaimsView(self.bot).children[0].callback(i)
+        await PostModal(self.bot).on_submit(interaction(self.guild,Member(self.guild)))
+        self.db.resources.assert_not_awaited();self.db.reserve_post.assert_not_awaited()
+
+    async def test_private_channel_without_bot_access_is_not_published(self):
+        admin=await self.ready_server()
+        for ch in self.guild.channels:
+            if hasattr(ch,'permissions_for'):ch.permissions_for=MagicMock(return_value=discord.Permissions.none())
+        await admin.publish(self.guild)
+        for ch in self.guild.channels:
+            if hasattr(ch,'send'):ch.send.assert_not_awaited()
+
+    async def test_archived_optional_channels_do_not_block_captcha_entry(self):
+        admin=await self.ready_server();await admin.publish(self.guild)
+        cfg,rev=await self.db.config(1);cfg.update(claims_enabled=False,gcars_enabled=False)
+        await self.db.save_config(1,cfg,rev,1)
+        for key in ('channel:gcars','channel:owners_chat','role:og'):
+            await self.db.state(1,key,'manual')
+        self.assertEqual(await admin.blockers(self.guild,entry_only=True),[])
+        self.assertEqual(await admin.blockers(self.guild),[])
+
+    async def test_unchanged_gate_configuration_is_not_reapplied_each_minute(self):
+        from main import GateBot
+        await self.bot.provisioner.apply(self.guild,1)
+        count=[0]
+        async def tick(seconds):count[0]+=1
+        monitor=SimpleNamespace(wait_until_ready=AsyncMock(),is_closed=lambda:count[0]>=3,guilds=[self.guild],db=self.db,
+            provisioner=SimpleNamespace(busy=set(),scan=AsyncMock(return_value=[]),apply=AsyncMock(return_value=[])))
+        with patch('main.asyncio.sleep',side_effect=tick):await GateBot.monitor(monitor)
+        monitor.provisioner.apply.assert_awaited_once()
+        self.assertEqual(monitor.provisioner.scan.await_count,3)
+
     async def test_role_is_granted_only_after_captcha_and_answer(self):
         await self.bot.provisioner.apply(self.guild,1)
         cfg,rev=await self.db.config(1);cfg['enabled']=True;await self.db.save_config(1,cfg,rev,1)
@@ -230,7 +404,7 @@ class Discord(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((await self.db.resources(1))['channel:gcars']['state'],'manual')
         owner=Member(self.guild,1);review=interaction(self.guild,owner)
         await admin.review(review,'channel:gcars')
-        keep=review.response.send_message.await_args.kwargs['view'].children[0]
+        keep=review.followup.send.await_args.kwargs['view'].children[0]
         confirmation=interaction(self.guild,owner);await keep.callback(confirmation)
         confirm=confirmation.response.send_message.await_args.kwargs['view'].children[0]
         await confirm.callback(interaction(self.guild,owner))
