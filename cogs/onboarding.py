@@ -40,6 +40,7 @@ class AnswerModal(gu.SafeModal):
         self.add_item(self.answer)
     async def on_submit(self,i):
         if i.user.id!=self.user:await gu.reply(i,"This form belongs to another member.");return
+        await i.response.defer(ephemeral=True)
         async with self.cog.locks[(i.guild_id,i.user.id)]:
             cfg,_=await self.bot.db.config(i.guild_id)
             if not cfg["enabled"]:raise ValueError("Verification is paused.")
@@ -52,6 +53,7 @@ class Questions(gu.SafeView):
         menu=discord.ui.Select(placeholder="Choose a question to answer",options=[discord.SelectOption(label=q["label"],value=q["id"],description=q["prompt"][:100]) for q in cfg["questions"] if q["enabled"]])
         async def choose(i):
             fresh,_=await self.bot.db.config(i.guild_id)
+            if not fresh.get('questions_enabled',True):return await cog.questions(i)
             q=next((q for q in fresh["questions"] if q["id"]==menu.values[0] and q["enabled"]),None)
             if not q:raise ValueError("That question changed. Open your status again.")
             await i.response.send_modal(AnswerModal(cog,user,q))
@@ -69,6 +71,7 @@ class VerificationView(gu.SafeView):
     @discord.ui.button(label="My status / Continue",custom_id="ripcars:gate:status")
     async def status(self,i,b):
         if not i.guild or i.user.bot:return
+        await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id);s=await self.bot.db.session(i.guild_id,i.user.id)
         role=await gu.resource(self.bot,i.guild,"rippers",True)
         if role and role.id in {r.id for r in i.user.roles}:await gu.reply(i,"Your member role is active.");return
@@ -87,28 +90,33 @@ class Onboarding(commands.Cog):
             if not role:raise ValueError("Member role is missing. Ask an admin to check Health.")
             if role.id in {r.id for r in i.user.roles}:await gu.reply(i,"Your member role is already active.");return
             s=await self.bot.db.session(i.guild_id,i.user.id)
-            if s and s["captcha_until"]>time.time():await self.questions(i);return
-            ch=await asyncio.to_thread(captcha.create,cfg["captcha_length"])
-            token=await self.bot.db.challenge(i.guild_id,i.user.id,ch,cfg["captcha_ttl"])
+            continuing=bool(s and s["captcha_until"]>time.time())
+            if not continuing:
+                ch=await asyncio.to_thread(captcha.create,cfg["captcha_length"])
+                token=await self.bot.db.challenge(i.guild_id,i.user.id,ch,cfg["captcha_ttl"])
+        if continuing:return await self.questions(i)
         e=gu.embed(cfg,"Verify you're human",f"Enter the code below. It expires in {cfg['captcha_ttl']//60} minutes. Letters are not case-sensitive.")
         e.set_image(url="attachment://ripcars-captcha.png")
         await gu.reply(i,embed=e,file=discord.File(io.BytesIO(ch.png),filename="ripcars-captcha.png"),view=CodeView(self,i.user.id,token,cfg["captcha_ttl"]))
     async def questions(self,i):
         cfg,_=await self.bot.db.config(i.guild_id);s=await self.bot.db.session(i.guild_id,i.user.id)
+        if not cfg.get('questions_enabled',True):return await self.finish(i)
         count=sum(q["id"] in (s or {}).get("answers",{}) for q in cfg["questions"] if q["enabled"])
         await gu.reply(i,embed=gu.embed(cfg,"A quick introduction",cfg["texts"]["questions_intro"]+f"\nAnswers saved: {count}"),view=Questions(self,i.user.id,cfg))
     async def finish(self,i):
-        await i.response.defer(ephemeral=True)
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         async with self.locks[(i.guild_id,i.user.id)]:
             cfg,_=await self.bot.db.config(i.guild_id);s=await self.bot.db.session(i.guild_id,i.user.id)
             if not cfg["enabled"]:raise ValueError("Verification is paused.")
-            if not core.eligible(s,time.time()):raise ValueError("Complete the CAPTCHA and answer at least one question before joining.")
-            if not any(q["enabled"] and q["id"] in s["answers"] for q in cfg["questions"]):raise ValueError("Answer at least one currently enabled question.")
+            questions=cfg.get('questions_enabled',True)
+            if not core.eligible(s,time.time(),questions):raise ValueError("Complete a fresh CAPTCHA"+" and answer at least one question." if questions else "Complete a fresh CAPTCHA before joining.")
+            if questions and not any(q["enabled"] and q["id"] in s["answers"] for q in cfg["questions"]):raise ValueError("Answer at least one currently enabled question.")
             role=await gu.resource(self.bot,i.guild,"rippers",True)
             if not role or role.permissions.value!=0 or role.managed or role>=i.guild.me.top_role:
                 raise ValueError("The member role needs an admin check. Your answers are saved. Check My status after it is fixed.")
+            if role.id in {r.id for r in i.user.roles}:return await gu.reply(i,'Your member role is already active.')
             try:
-                await i.user.add_roles(role,reason="Ripcars Gate: CAPTCHA and at least one answer completed")
+                await i.user.add_roles(role,reason="Ripcars Gate: CAPTCHA completed"+(" and required answer saved" if questions else ""))
             except discord.HTTPException as exc:
                 await self.bot.db.verified(i.guild_id,i.user.id,str(exc));raise
             await self.bot.db.verified(i.guild_id,i.user.id)

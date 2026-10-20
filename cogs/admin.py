@@ -16,6 +16,7 @@ from .onboarding import VerificationView
 from .community import ClaimsView,GcarsView
 
 SECTIONS={
+    "features":("Features on / off","Choose the entry and community features this server uses."),
     "server":("Server setup","Preview and build categories, channels, roles, and access."),
     "onboarding":("Entry & CAPTCHA","Activate entry and adjust CAPTCHA rules."),
     "questions":("Questions","Edit, add, or disable onboarding questions."),
@@ -56,32 +57,45 @@ class Editor(gu.SafeModal):
             self.inputs[key]=inp;self.add_item(inp)
     async def on_submit(self,i):
         if i.user.id!=self.user or not await gu.require(self.bot,i):return
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         values={key:x.value.strip() for key,x in self.inputs.items()}
         self.save(self.cfg,values)
         await self.bot.db.save_config(i.guild_id,self.cfg,self.revision,i.user.id)
         await gu.reply(i,"Saved. Active managed resources update at the next monitoring pass. Preview setup for structural changes. Use Publish panels to refresh public messages.")
 
 class Choice(AdminView):
-    def __init__(self,cog,user,options,action,placeholder="Choose an item"):
+    def __init__(self,cog,user,options,action,placeholder="Choose an item",page=0):
         super().__init__(cog,user)
-        menu=discord.ui.Select(placeholder=placeholder,options=options)
+        menu=discord.ui.Select(placeholder=placeholder,options=options[page*25:(page+1)*25])
         async def choose(i):await action(i,menu.values[0])
         menu.callback=choose;self.add_item(menu)
+        for label,target in (("Previous",page-1),("Next",page+1)):
+            if 0<=target<((len(options)+24)//25):
+                button=discord.ui.Button(label=label,row=1)
+                async def move(i,p=target):
+                    await i.response.edit_message(view=Choice(cog,user,options,action,placeholder,p))
+                button.callback=move;self.add_item(button)
 
 class Hub(AdminView):
-    def __init__(self,cog,user):
+    def __init__(self,cog,user,advanced=False):
         super().__init__(cog,user)
-        menu=discord.ui.Select(placeholder="Choose a section",options=[discord.SelectOption(label=name,value=k,description=desc[:100]) for k,(name,desc) in SECTIONS.items()])
-        async def choose(i):await cog.section(i,menu.values[0])
+        visible=SECTIONS if advanced else {k:SECTIONS[k] for k in ('onboarding','features','texts','health')}
+        options=[discord.SelectOption(label=name,value=k,description=desc[:100]) for k,(name,desc) in visible.items()]
+        if not advanced:options.append(discord.SelectOption(label='More settings',value='advanced',description='Channels, server layout, resources, integrations and history.'))
+        menu=discord.ui.Select(placeholder="Choose a section",options=options)
+        async def choose(i):
+            if menu.values[0]=='advanced':await gu.reply(i,'All settings. Existing capabilities remain available.',view=Hub(cog,user,True))
+            else:await cog.section(i,menu.values[0])
         menu.callback=choose;self.add_item(menu)
 
 class SectionView(AdminView):
     def __init__(self,cog,user,key):
         super().__init__(cog,user);self.key=key
         actions={
+            'features': [('Questions on / off','questions_toggle'),('Optional roles on / off','claims_toggle'),('gCARS on / off','gcars_toggle'),('Channel filters on / off','channel_filters_toggle'),('Automatic setup updates on / off','auto_repair_toggle')],
             "server":[("Preview setup","preview"),("Publish panels","publish")],
-            "onboarding":[("Activate / Pause","toggle"),("CAPTCHA settings","captcha")],
-            "questions":[("Edit a question","question"),("Add a question","add_question")],
+            "onboarding":[("Activate / Pause","toggle"),("CAPTCHA settings","captcha"),("Questions on / off","questions_toggle")],
+            "questions":[("Questions on / off","questions_toggle"),("Edit a question","question"),("Add a question","add_question")],
             "texts":[("Edit a message","text"),("Publish panels","publish")],
             "branding":[("Edit branding","brand"),("Role names","roles")],
             "channels":[("Channels","channel"),("Categories","category")],
@@ -112,35 +126,54 @@ class Admin(commands.Cog):
     @gate.command(name="guide",description="Read the entry and server guide")
     async def gate_guide(self,i:discord.Interaction):
         cfg,_=await self.bot.db.config(i.guild_id)
-        await gu.reply(i,embed=gu.embed(cfg,"Rip Cars guide","Start in Verification. Pass the CAPTCHA and answer at least one question to get the member role. Choose optional roles in Notifications. OG is assigned by an admin. Holder verification and the support bot will be connected later.\nApp: "+cfg["website"]))
+        await gu.reply(i,embed=gu.embed(cfg,"Rip Cars guide","Start in Verification. "+core.welcome_text(cfg)+" Choose optional roles in Notifications. OG is assigned by an admin.\nApp: "+cfg["website"]))
     async def panel(self,i):
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id)
         await gu.reply(i,embed=gu.embed(cfg,"Setup center","Choose a section below. Changes stay separate from companion bots. Member entry is "+("active." if cfg["enabled"] else "paused.")),view=Hub(self,i.user.id))
     async def section(self,i,key):
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id)
         if key=="health":await self.show_health(i);return
         detail=SECTIONS[key][1]
+        if key in ('onboarding','questions'):detail+='\nQuestions: '+('On. Answer one question after CAPTCHA.' if cfg.get('questions_enabled',True) else 'Off. CAPTCHA grants the member role directly.')
+        if key=='features':
+            detail+='\n'+'\n'.join(label+': '+('On' if cfg.get(field,True) else 'Off') for label,field in (('Questions','questions_enabled'),('Optional role claims','claims_enabled'),('gCARS','gcars_enabled'),('Channel content filters','channel_filters_enabled'),('Automatic setup updates','auto_repair')))
         if key=="help":detail="1. Server setup → Preview → Apply.\n2. Check bot role order and Health.\n3. Publish panels.\n4. Entry & CAPTCHA → Activate.\n5. Test with a regular account.\n\nResources changed outside Gate are protected. Bind existing objects by ID. For a protected resource, Keep current accepts the current managed fields; Restore template explicitly applies the configured template. Unknown channels and bots are not changed."
         if key=="integrations":detail+="\nNo integration is active by default. Register by bot ID, then activate a reviewed access plan."
         await gu.reply(i,embed=gu.embed(cfg,SECTIONS[key][0],detail),view=SectionView(self,i.user.id,key))
     async def action(self,i,action):
         if not await gu.require(self.bot,i):return
+        if action not in ("captcha","brand","add_question","bind","integration") and not i.response.is_done():
+            await i.response.defer(ephemeral=True)
         cfg,revision=await self.bot.db.config(i.guild_id)
         async def editor(title,fields,save):await i.response.send_modal(Editor(self,i.user.id,cfg,revision,title,fields,save))
         async def choose(options,fn):await gu.reply(i,"Choose an item.",view=Choice(self,i.user.id,options,fn))
-        if action=="preview":
-            await i.response.defer(ephemeral=True)
+        if action=='questions_toggle':
+            cfg['questions_enabled']=not cfg.get('questions_enabled',True)
+            await self.bot.db.save_config(i.guild_id,cfg,revision,i.user.id)
+            await self.publish(i.guild,only=('verification',))
+            await self.section(i,'onboarding')
+        elif action in ('claims_toggle','gcars_toggle','channel_filters_toggle','auto_repair_toggle'):
+            field={'claims_toggle':'claims_enabled','gcars_toggle':'gcars_enabled','channel_filters_toggle':'channel_filters_enabled','auto_repair_toggle':'auto_repair'}[action]
+            cfg[field]=not cfg.get(field,True)
+            await self.bot.db.save_config(i.guild_id,cfg,revision,i.user.id)
+            if field in ('claims_enabled','gcars_enabled'):await self.publish(i.guild,only=('notifications',) if field=='claims_enabled' else ('gcars',))
+            await self.section(i,'features')
+        elif action=="preview":
+            if not i.response.is_done():await i.response.defer(ephemeral=True)
             lines=await self.bot.provisioner.plan(i.guild)
             async def apply(j):
-                results=await self.bot.provisioner.apply(j.guild,j.user.id)
+                results=await self.bot.provisioner.apply(j.guild,j.user.id,revision=revision)
                 await gu.reply(j,"Setup finished. Review the attached result before activating entry.",file=discord.File(io.BytesIO("\n".join(results).encode()),filename="setup-result.txt"))
             await gu.reply(i,"Preview: roles and per-channel access will be created or updated. Existing manual changes and unknown resources stay protected.",file=discord.File(io.BytesIO("\n".join(lines).encode()),filename="setup-preview.txt"),view=Confirm(self,i.user.id,apply,"Apply setup"))
         elif action=="publish":
-            await i.response.defer(ephemeral=True);await self.publish(i.guild)
+            if not i.response.is_done():await i.response.defer(ephemeral=True)
+            await self.publish(i.guild)
             await gu.reply(i,"Public messages and persistent buttons have been refreshed.")
         elif action=="toggle":
             if not cfg["enabled"]:
-                blockers=await self.blockers(i.guild)
+                blockers=await self.blockers(i.guild,entry_only=True)
                 if blockers:await gu.reply(i,"Activation blockers:\n"+"\n".join(blockers));return
             cfg["enabled"]=not cfg["enabled"];await self.bot.db.save_config(i.guild_id,cfg,revision,i.user.id)
             await gu.reply(i,"Entry is "+("active." if cfg["enabled"] else "paused."))
@@ -166,15 +199,15 @@ class Admin(commands.Cog):
             res=await self.bot.db.resources(i.guild_id)
             keys=[k for k,r in res.items() if r['owner']==core.OWNER and r["state"]!="active"]
             if not keys:await gu.reply(i,"No protected or missing resources need review.");return
-            await choose([discord.SelectOption(label=k[:100],value=k) for k in keys[:25]],self.review)
+            await choose([discord.SelectOption(label=k[:100],value=k) for k in keys],self.review)
         elif action=="integration":await i.response.send_modal(IntegrationModal(self,i.user.id))
         elif action=="integration_review":
             rows=await self.bot.db.query("SELECT * FROM integrations WHERE guild=?",(i.guild_id,))
             if not rows:await gu.reply(i,"No companion bots are registered. Gate works independently.");return
-            await choose([discord.SelectOption(label=f"{r['bot']} · {r['scope']} · {'active' if r['active'] else 'inactive'}"[:100],value=str(r["bot"])) for r in rows[:25]],self.integration_review)
+            await choose([discord.SelectOption(label=f"{r['bot']} · {r['scope']} · {'active' if r['active'] else 'inactive'}"[:100],value=str(r["bot"])) for r in rows],self.integration_review)
         elif action=="health":await self.show_health(i)
         elif action=="backup":
-            await i.response.defer(ephemeral=True)
+            if not i.response.is_done():await i.response.defer(ephemeral=True)
             path=await asyncio.to_thread(health.run_backup,self.bot.db.path)
             if self.bot.db.coordination:await asyncio.to_thread(health.run_backup,self.bot.db.coordination.path)
             await gu.reply(i,"Backup created: "+(path.name if path else "database not found"))
@@ -211,46 +244,48 @@ class Admin(commands.Cog):
                 if (s["kind"]=="category") != (v["kind"]=="category"):raise ValueError("A category cannot be converted to a chat.")
                 c["blueprint"][key].update(name=v["name"],topic="" if v["topic"]=="-" else v["topic"],kind=v["kind"],access=v["access"],mode=mode,slowmode=int(seconds),links=yesno(links),images=yesno(images))
         await i.response.send_modal(Editor(self,i.user.id,cfg,revision,"Edit "+key.replace("_"," "),fields,save))
-    async def blockers(self,guild):
+    async def blockers(self,guild,entry_only=False):
         rows=await self.bot.db.resources(guild.id);issues=[]
         cfg,_=await self.bot.db.config(guild.id)
-        for key in core.ROLE_SPECS:
-            r=rows.get("role:"+key)
-            if not r or not guild.get_role(r["object_id"]):issues.append(key+": role is missing")
-        for key in cfg["blueprint"]:
-            r=rows.get("channel:"+key)
-            if not r:issues.append(key+": not built yet")
-        for key in ("role:rippers","channel:verification","channel:gcars"):
+        roles=['rippers'];channels=['verification']
+        if not entry_only:
+            if cfg.get('claims_enabled',True):roles.extend('claim_'+key for key in core.CLAIM_KEYS);channels.append('notifications')
+            if cfg.get('gcars_enabled',True):channels.append('gcars')
+        for key in ['role:'+key for key in roles]+['channel:'+key for key in channels]:
             r=rows.get(key)
-            if not r or r["state"] not in ("active","pinned"):issues.append(key+": missing or protected")
-        role=await gu.resource(self.bot,guild,"rippers",True)
-        if role and (role.permissions.value or role.managed or role>=guild.me.top_role):issues.append("Rippers must have no server-wide permissions and sit below the bot role.")
-        for key,r in rows.items():
-            if r["owner"]==core.OWNER and r["state"] not in ("active","pinned"):issues.append(key+": "+r["state"])
-        if not self.bot.intents.message_content:issues.append("Message Content intent is required for channel link/image filters.")
-        for key,r in rows.items():
-            if not key.startswith("channel:") or r["kind"]=="category":continue
-            ch=guild.get_channel(r["object_id"])
-            if not ch:issues.append(key+": deleted");continue
-            p=ch.permissions_for(guild.me)
-            if not all((p.view_channel,p.read_message_history,p.send_messages,p.embed_links,p.attach_files,p.manage_messages)):
-                issues.append(key+": bot needs View Channel, Read History, Send, Embed, Attach, and Manage Messages")
-        panels=await self.bot.db.query("SELECT key FROM panels WHERE guild=?",(guild.id,))
-        published={r["key"] for r in panels}
-        for key in ("verification","notifications","gcars"):
-            if key not in published:issues.append(key+": publish its panel first")
+            obj=(guild.get_role(r['object_id']) if key.startswith('role:') else guild.get_channel(r['object_id'])) if r else None
+            if not r or not obj or r['state'] not in ('active','pinned'):issues.append(key+': missing or protected')
+        role=await gu.resource(self.bot,guild,'rippers',True)
+        if role and (role.permissions.value or role.managed or role>=guild.me.top_role):issues.append('Rippers must have no server-wide permissions and sit below the bot role.')
+        if cfg.get('channel_filters_enabled',True) and not self.bot.intents.message_content and not entry_only:issues.append('Message Content intent is required for channel link/image filters.')
+        for key in channels:
+            r=rows.get('channel:'+key);ch=guild.get_channel(r['object_id']) if r else None
+            if ch:
+                p=ch.permissions_for(guild.me)
+                if not all((p.view_channel,p.read_message_history,p.send_messages,p.embed_links,p.attach_files)):
+                    issues.append(key+': bot needs View Channel, Read History, Send, Embed and Attach')
+        published={r['key'] for r in await self.bot.db.query('SELECT key FROM panels WHERE guild=?',(guild.id,))}
+        for key in channels:
+            if key not in published:issues.append(key+': publish its panel first')
         return list(dict.fromkeys(issues))
-    async def publish(self,guild):
+    async def publish(self,guild,only=None):
         cfg,_=await self.bot.db.config(guild.id)
         mapping={"verification":("welcome_title","welcome",VerificationView(self.bot.get_cog("Onboarding"))),"notifications":(None,"notifications",ClaimsView(self.bot,cfg)),"gcars":(None,"gcars",GcarsView(self.bot))}
         keys=["rules","faq","official_links","announcements","twitter_posts","community_news","proposals","ticket",*mapping]
+        if only is not None:keys=[key for key in keys if key in only]
         for key in keys:
             ch=await gu.resource(self.bot,guild,key)
             if not ch or not isinstance(ch,discord.TextChannel):continue
+            if not all(getattr(ch.permissions_for(guild.me),p) for p in ('view_channel','send_messages','embed_links','read_message_history')):continue
             r=(await self.bot.db.resources(guild.id))["channel:"+key]
-            if r["owner"]!=core.OWNER or r["state"]!="active":continue
+            if r["owner"]!=core.OWNER or r["state"] not in ("active","pinned"):continue
             titlekey,textkey,view=mapping.get(key,(None,key,None))
-            e=gu.embed(cfg,cfg["texts"][titlekey] if titlekey else cfg["blueprint"][key]["name"].replace("-"," ").title(),cfg["texts"][textkey])
+            description=core.welcome_text(cfg) if key=='verification' else cfg['texts'][textkey]
+            if key=='notifications' and not cfg.get('claims_enabled',True):
+                view=None;description='Optional notification roles are currently unavailable.'
+            if key=='gcars' and not cfg.get('gcars_enabled',True):
+                view=None;description='gCARS submissions are currently closed.'
+            e=gu.embed(cfg,cfg["texts"][titlekey] if titlekey else cfg["blueprint"][key]["name"].replace("-"," ").title(),description)
             rows=await self.bot.db.query("SELECT * FROM panels WHERE guild=? AND key=?",(guild.id,key))
             msg=None
             if rows and rows[0]["channel"]==ch.id:
@@ -261,7 +296,7 @@ class Admin(commands.Cog):
                 msg=await ch.send(embed=e,view=view,allowed_mentions=discord.AllowedMentions.none())
                 await self.bot.db.execute("INSERT INTO panels VALUES(?,?,?,?) ON CONFLICT(guild,key) DO UPDATE SET channel=excluded.channel,message=excluded.message",(guild.id,key,ch.id,msg.id))
     async def show_health(self,i):
-        await i.response.defer(ephemeral=True)
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         cfg,_=await self.bot.db.config(i.guild_id);snap=await health.snapshot(self.bot,i.guild_id)
         issues=await self.blockers(i.guild)
         details=f"Version: {core.VERSION}\nUptime: {health.format_uptime(snap['uptime'])}\nGateway: {snap['latency_ms']} ms\nDatabase: {'OK' if snap['db_ok'] else 'FAILED'}\nBackups: {snap['backups']}\nLatest backup: {snap['last_backup']}\nEntry: {'active' if cfg['enabled'] else 'paused'}\nMembers: {snap['verification']}\nWatchdog: {'on' if snap['watchdog'] else 'off'}\n\nBlockers:\n"+("\n".join(issues) or "None")
@@ -269,7 +304,9 @@ class Admin(commands.Cog):
         details+="\n\nRecent errors:\n"+("\n".join(r["details"] for r in errors) or "None")
         await gu.reply(i,embed=gu.embed(cfg,"Health & troubleshooting",details),view=SectionView(self,i.user.id,"health") if await gu.authorized(self.bot,i) else None)
     async def review(self,i,key):
+        if not i.response.is_done():await i.response.defer(ephemeral=True)
         rows=await self.bot.db.resources(i.guild_id);r=rows[key]
+        _,revision=await self.bot.db.config(i.guild_id)
         if r['owner']!=core.OWNER:raise ValueError('Use the owning bot to review this resource. Gate did not change it.')
         obj=i.guild.get_role(r["object_id"]) if key.startswith("role:") else i.guild.get_channel(r["object_id"])
         if not obj:await gu.reply(i,"This resource was deleted. Use Bind an existing ID to choose a replacement.");return
@@ -277,16 +314,13 @@ class Admin(commands.Cog):
         async def keep(j):
             async with self.bot.db.coordinated(j.guild_id):
                 fresh=(await self.bot.db.resources(j.guild_id)).get(key)
-                if not fresh or fresh['owner']!=core.OWNER or fresh['object_id']!=r['object_id']:raise ValueError('Resource ownership or binding changed. Reopen review.')
-                await self.bot.db.baseline(j.guild_id,key,current)
-                await self.bot.db.state(j.guild_id,key,"pinned")
+                obj=j.guild.get_role(r["object_id"]) if key.startswith("role:") else j.guild.get_channel(r["object_id"])
+                actual=(role_snapshot(obj) if key.startswith("role:") else channel_snapshot(obj,r["baseline"])) if obj else None
+                if fresh!=r or actual!=current:raise ValueError('Resource changed. Reopen review.')
+                await self.bot.db.baseline(j.guild_id,key,current,"pinned")
             await gu.reply(j,"Current settings kept. Automatic changes stay disabled for this resource.")
         async def restore(j):
-            async with self.bot.db.coordinated(j.guild_id):
-                fresh=(await self.bot.db.resources(j.guild_id)).get(key)
-                if not fresh or fresh['owner']!=core.OWNER or fresh['object_id']!=r['object_id']:raise ValueError('Resource ownership or binding changed. Reopen review.')
-                await self.bot.db.baseline(j.guild_id,key,current)
-            result=await self.bot.provisioner.apply(j.guild,j.user.id)
+            result=await self.bot.provisioner.apply(j.guild,j.user.id,review=(key,r,current,revision))
             await gu.reply(j,"Template application result:",file=discord.File(io.BytesIO("\n".join(result).encode()),filename="repair-result.txt"))
         view=AdminView(self,i.user.id)
         for label,fn in [("Keep current",keep),("Restore template",restore)]:
