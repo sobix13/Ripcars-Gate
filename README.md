@@ -1,7 +1,7 @@
-# Ripcars Gate 1.0.2
+# Ripcars Gate 1.1.0
 ## Repository files and installation packages
 
-This repository contains the complete 1.0.2 source, tests, dependency files, installation/rollback scripts, systemd service, settings examples and English operational documentation.
+This repository contains the complete 1.1.0 source, tests, dependency files, installation/rollback scripts, systemd service, settings examples and English operational documentation.
 
 | File or directory | Purpose |
 | --- | --- |
@@ -43,7 +43,7 @@ Compatibility update: a chat-filter deletion that receives NotFound because anot
 
 New member → image CAPTCHA → at least one enabled question answered → Finish and join → Rippers.
 
-The remaining questions are optional. A successful CAPTCHA alone never grants Rippers. Invalid answers, stale CAPTCHA submissions, expired challenges, and failed role grants do not mark entry complete. Progress survives a process restart. Rejoining resets entry but retains the previously collected profile data.
+The remaining questions are optional. When Questions is off, a successful live CAPTCHA grants Rippers directly; saved questions and answers are retained. Invalid answers, stale CAPTCHA submissions, expired challenges, and failed role grants do not mark entry complete. Progress survives a process restart. Rejoining resets entry but retains the previously collected profile data.
 
 Defaults: 6 characters, 5-minute image expiry, 3 wrong attempts, 10-minute lock, 30 minutes to finish questions. No automatic kick or ban.
 
@@ -65,7 +65,7 @@ Trades and Hot Wheels IRL default to ordinary text channels with text, images, a
 
 ## Admin center
 
-Use `/gate panel`. Sections: Server setup; Entry & CAPTCHA; Questions; Messages; Brand & roles; Channels & access; Resources & manual changes; Future bots; Health & troubleshooting; Member data & history; Guide.
+Use `/gate panel`. The first page shows Entry & CAPTCHA, Features on / off, Messages, Health, and More settings. Every original section remains available under More settings.
 
 Server setup has Preview and Apply. Public panels are posted or edited by recorded message ID, so repeated publishing does not create duplicates while the recorded message exists. Entry stays paused until an admin publishes panels and resolves activation blockers.
 
@@ -89,7 +89,7 @@ The service runs as `ripcarsgate`, with systemd restart, readiness notification,
 
 ## Validation status
 
-All 79 tests passed in the separately configured Python environment with real discord.py 2.6.4 and SQLite. No tests were skipped. New checks cover mirrored leases, atomic handoff, foreign ownership protection and separate private/shared paths. Four-process suite tests are recorded separately in SUITE_TEST_RESULTS.txt. See TEST_RESULTS.txt for the current execution boundaries.
+All 99 tests passed in the separately configured Python environment with real discord.py 2.6.4 and SQLite. No tests were skipped. New checks cover mirrored leases, atomic handoff, foreign ownership protection and separate private/shared paths. Four-process suite tests are recorded separately in SUITE_TEST_RESULTS.txt. See TEST_RESULTS.txt for the current execution boundaries.
 
 The suite covers policies, actual bot startup, persistent Discord UI, a complete simulated admin/member entry session, CAPTCHA and role grants, notification role toggles, duplicate-free publishing, daily text submissions, failed-publish cooldown recovery, protected manual changes, shared coordination locks, stale settings, and backup integrity. Discord API calls and transport failures are mocked. This is not a private Discord server or a live gateway session.
 
