@@ -54,20 +54,23 @@ class GateBot(commands.Bot):
     async def on_ready(self):log.info("online as %s version %s in %d guilds",self.user,self.version,len(self.guilds))
     async def monitor(self):
         await self.wait_until_ready()
+        applied={}
         while not self.is_closed():
             for guild in self.guilds:
                 try:
                     if guild.id in self.provisioner.busy:continue
                     changes=await self.provisioner.scan(guild)
-                    cfg,_=await self.db.config(guild.id)
-                    if cfg["auto_repair"] and await self.db.resources(guild.id):
+                    cfg,revision=await self.db.config(guild.id)
+                    if cfg["auto_repair"] and applied.get(guild.id)!=revision and await self.db.resources(guild.id):
                         results=await self.provisioner.apply(guild,None,automatic=True)
+                        applied[guild.id]=revision
                         failed=[r for r in results if r.startswith("FAILED")]
                         if failed:await gu.report(self,guild,"managed permissions",RuntimeError("\n".join(failed)[:1500]))
                     if changes:
                         await self.db.log(guild.id,None,"protected_changes","\n".join(changes))
                         ch=guild.get_channel(cfg["ops_channel_id"] or 0)
-                        if ch:await ch.send(embed=gu.embed(cfg,"Changes preserved","\n".join(changes)),allowed_mentions=discord.AllowedMentions.none())
+                        if ch and ch.permissions_for(guild.me).view_channel and ch.permissions_for(guild.me).send_messages and ch.permissions_for(guild.me).embed_links:
+                            await ch.send(embed=gu.embed(cfg,"Changes preserved","\n".join(changes)),allowed_mentions=discord.AllowedMentions.none())
                 except asyncio.CancelledError:raise
                 except db.Conflict:continue
                 except Exception as exc:await gu.report(self,guild,"resource monitoring",exc)

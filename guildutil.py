@@ -37,7 +37,7 @@ async def member_gate(bot,interaction):
     if not interaction.guild or interaction.user.bot:return False
     role=await resource(bot,interaction.guild,"rippers",True)
     if not role or role.id not in {r.id for r in interaction.user.roles}:
-        await reply(interaction,"Complete verification and at least one question first.");return False
+        await reply(interaction,"Complete Gate verification first.");return False
     return True
 
 async def report(bot,guild,area,exc):

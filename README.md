@@ -98,3 +98,5 @@ Live Discord and VPS deployment have not been tested from this environment. The 
 Run full checks: `bash run_tests.sh`. Dependency-free diagnostics: `bash run_tests.sh --offline` (runtime tests skip if discord.py is missing).
 
 Build new English packages with `python3 scripts/build_release.py /tmp/ripcars-gate-release-output`. The output directory must be outside this checkout and must not contain archives with the same version.
+
+Quiet launch setup: [QUIET_LAUNCH.md](QUIET_LAUNCH.md).

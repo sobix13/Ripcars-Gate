@@ -75,7 +75,9 @@ class Database:
             row = c.execute("SELECT * FROM settings WHERE guild=?",(guild,)).fetchone()
             if not row:
                 cfg = core.defaults(); c.execute("INSERT INTO settings VALUES(?,?,?)",(guild,1,json.dumps(cfg))); return cfg,1
-            return json.loads(row["body"]),row["revision"]
+            cfg=json.loads(row["body"])
+            for key in ('questions_enabled','claims_enabled','gcars_enabled','channel_filters_enabled'):cfg.setdefault(key,True)
+            return cfg,row["revision"]
         return await self.run(get)
     async def save_config(self, guild, cfg, revision, actor):
         core.validate(cfg)
@@ -116,6 +118,7 @@ class Database:
             c.execute("UPDATE sessions SET challenge='',salt='',digest='',expires=0,captcha_until=?,attempts=0,locked_until=0 WHERE guild=? AND user=?",(now+cfg["answer_ttl"],guild,user)); return "passed"
         return await self.run(check)
     async def answer(self,guild,user,qid,value,cfg):
+        if not cfg.get('questions_enabled',True):raise ValueError('Questions are turned off. Reopen My status to finish joining.')
         value=core.normalize_answer(value)
         if not value: raise ValueError("Enter a response. At least one question is required.")
         if not any(q["id"]==qid and q["enabled"] for q in cfg["questions"]): raise ValueError("This question is no longer enabled.")
@@ -144,8 +147,8 @@ class Database:
         await (self.coordination or self).run(put)
     async def state(self,guild,key,state):
         await self.execute("UPDATE resources SET state=? WHERE guild=? AND key=?",(state,guild,key))
-    async def baseline(self,guild,key,value):
-        await self.execute("UPDATE resources SET baseline=?,state='active' WHERE guild=? AND key=?",(json.dumps(value),guild,key))
+    async def baseline(self,guild,key,value,state="active"):
+        await self.execute("UPDATE resources SET baseline=?,state=? WHERE guild=? AND key=?",(json.dumps(value),state,guild,key))
     async def lease(self,guild,key,ttl=180):
         return await (self.coordination or self).run(lambda c:protocol.claim(c,guild,key,ttl,error=Conflict))
     async def renew(self,guild,key,token,ttl=180):
